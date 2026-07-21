@@ -81,17 +81,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "Detect AI-generated text and humanize it with semantic-preserving optimization. Perplexity, burstiness & n-gram analysis in real time.",
+          "Detect AI-generated text with perplexity, burstiness and n-gram analysis, then humanize it while preserving semantic meaning.",
       },
       { name: "author", content: "Oligens" },
-      { property: "og:title", content: "Oligens Detector" },
+      { property: "og:title", content: "Oligens Detector — Quantum AI Text Analysis" },
       {
         property: "og:description",
         content:
-          "Quantum text intelligence — detect the machine, restore the human.",
+          "Detect AI-generated text with perplexity, burstiness and n-gram analysis, then humanize it while preserving semantic meaning.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "Oligens Detector — Quantum AI Text Analysis" },
+      { name: "twitter:description", content: "Detect AI-generated text with perplexity, burstiness and n-gram analysis, then humanize it while preserving semantic meaning." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/87dd7a3a-dac1-424e-a361-1203c4a8cc88" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/87dd7a3a-dac1-424e-a361-1203c4a8cc88" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },

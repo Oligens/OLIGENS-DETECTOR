@@ -23,11 +23,11 @@ export const Route = createFileRoute("/")({
         content:
           "Detect AI-generated text with perplexity, burstiness and n-gram analysis, then humanize it while preserving semantic meaning.",
       },
-      { property: "og:title", content: "Oligens Detector" },
+      { property: "og:title", content: "Oligens Detector — Quantum AI Text Analysis" },
       {
         property: "og:description",
         content:
-          "Quantum AI text detection & humanization engine with real-time metrics.",
+          "Detect AI-generated text with perplexity, burstiness and n-gram analysis, then humanize it while preserving semantic meaning.",
       },
     ],
   }),
