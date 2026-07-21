@@ -142,3 +142,133 @@
     color: var(--color-foreground);
   }
 }
+
+/* ============================================================
+   OLIGENS DETECTOR — Sci-Fi Design System
+   ============================================================ */
+
+:root {
+  --oligens-gold: #FFD700;
+  --oligens-gold-deep: #D4AF37;
+  --oligens-silver: #C0C0C0;
+  --oligens-chrome: #E5E4E2;
+  --oligens-ink: #050508;
+  --oligens-ink-2: #0A0A0F;
+  --font-display: "Orbitron", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body {
+  background-color: var(--oligens-ink);
+  color: #fff;
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display { font-family: var(--font-display); letter-spacing: 0.04em; }
+.font-mono { font-family: var(--font-mono); }
+
+.oligens-gold-text {
+  background: linear-gradient(135deg, #FFF3B0 0%, #FFD700 40%, #D4AF37 70%, #B8860B 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 30px rgba(255, 215, 0, 0.25);
+}
+
+.glass-panel {
+  background: rgba(15, 15, 20, 0.62);
+  backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset,
+    0 0 22px rgba(255, 215, 0, 0.06),
+    0 20px 60px rgba(0, 0, 0, 0.5);
+  position: relative;
+}
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255,215,0,0.35), rgba(192,192,192,0.08) 40%, transparent 60%, rgba(255,215,0,0.2));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+.oligens-btn-primary {
+  position: relative;
+  overflow: hidden;
+  padding: 0.7rem 1.25rem;
+  border-radius: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: #0A0A0F;
+  background: linear-gradient(135deg, #FFE97A 0%, #FFD700 40%, #D4AF37 100%);
+  border: 1px solid rgba(255,215,0,0.6);
+  box-shadow:
+    0 0 22px rgba(255, 215, 0, 0.35),
+    0 6px 20px rgba(212, 175, 55, 0.25),
+    inset 0 1px 0 rgba(255,255,255,0.4);
+  transition: transform 200ms ease, box-shadow 200ms ease, filter 200ms ease;
+  cursor: pointer;
+}
+.oligens-btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 700ms ease;
+}
+.oligens-btn-primary:hover::after { transform: translateX(120%); }
+.oligens-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 32px rgba(255,215,0,0.55), 0 10px 30px rgba(212,175,55,0.35), inset 0 1px 0 rgba(255,255,255,0.5);
+}
+.oligens-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+
+.oligens-btn-ghost {
+  padding: 0.55rem 1rem;
+  border-radius: 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.75);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.12);
+  transition: all 200ms ease;
+  cursor: pointer;
+}
+.oligens-btn-ghost:hover {
+  color: var(--oligens-gold);
+  border-color: rgba(255,215,0,0.5);
+  box-shadow: 0 0 14px rgba(255,215,0,0.15);
+}
+
+@keyframes oligens-wave {
+  from { transform: scaleY(0.4); }
+  to   { transform: scaleY(1.4); }
+}
+
+textarea::selection { background: rgba(255,215,0,0.3); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(212,175,55,0.5), rgba(212,175,55,0.2));
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,215,0,0.7); }
