@@ -37,17 +37,18 @@ export function MatrixRain() {
         const x = i * fontSize;
         const y = drops[i] * fontSize;
 
-        // Head: bright gold, tail: dim silver/cyan
+        // Head: bright warm gold, tail: deep gold + chrome-blue blend
         const isHead = Math.random() > 0.985;
         if (isHead) {
-          ctx.fillStyle = "rgba(255, 235, 150, 0.95)";
+          ctx.fillStyle = "rgba(255, 224, 130, 0.95)";
         } else {
           const palette = [
-            "rgba(212, 175, 55, 0.55)", // gold
-            "rgba(192, 192, 192, 0.35)", // silver
-            "rgba(120, 200, 220, 0.25)", // cyan
+            "rgba(212, 175, 55, 0.55)",  // deep gold #D4AF37
+            "rgba(212, 175, 55, 0.32)",  // deep gold, dim
+            "rgba(70, 130, 180, 0.42)",  // chrome-blue #4682B4
+            "rgba(70, 130, 180, 0.22)",  // chrome-blue, dim
           ];
-          ctx.fillStyle = palette[i % palette.length];
+          ctx.fillStyle = palette[(i + drops[i]) % palette.length];
         }
         ctx.fillText(ch, x, y);
 
