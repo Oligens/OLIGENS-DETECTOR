@@ -322,6 +322,8 @@ function OligensPage() {
                   setText("");
                   setMetrics(null);
                   setHumanized(null);
+                  setRapport(null);
+                  setOllamaError(null);
                   setFileName(null);
                 }}
                 className="oligens-btn-ghost"
