@@ -418,10 +418,80 @@ function OligensPage() {
                       : "HUMANIZE TEXT (OPTIMIZATION)"}
                   </span>
                 </button>
+                <button
+                  onClick={runOllama}
+                  disabled={ollamaBusy || !text.trim()}
+                  className="oligens-btn-ghost mt-2 w-full"
+                  title="Requires Ollama running locally with llama3.2:3b"
+                >
+                  {ollamaBusy
+                    ? "CALLING OLLAMA…"
+                    : "FALLBACK · LOCAL OLLAMA (llama3.2:3b)"}
+                </button>
+                {ollamaError && (
+                  <div className="mt-2 rounded-md border border-red-400/30 bg-red-500/5 p-2 font-mono text-[10px] uppercase tracking-widest text-red-300">
+                    {ollamaError}
+                  </div>
+                )}
               </>
             )}
           </div>
         </div>
+
+        {rapport && (
+          <section className="glass-panel mt-6 rounded-2xl p-5 md:p-6">
+            <SectionHeader
+              index="R"
+              title="Humanizer Report"
+              hint={rapport.decision}
+            />
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+              <RapportStat
+                label="Initial AI"
+                value={`${(rapport.proba_initiale * 100).toFixed(1)}%`}
+              />
+              <RapportStat
+                label="Final AI"
+                value={`${(rapport.proba_finale * 100).toFixed(1)}%`}
+                gold
+              />
+              <RapportStat
+                label="Reduction"
+                value={`${rapport.reduction_pourcent.toFixed(1)}%`}
+              />
+              <RapportStat
+                label="Iterations"
+                value={String(rapport.iterations_realisees)}
+              />
+              <RapportStat
+                label="Status"
+                value={
+                  rapport.proba_finale < 0.35 ? "NEUTRALIZED" : "PARTIAL"
+                }
+              />
+            </div>
+            {rapport.historique.length > 0 && (
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 font-mono text-[10px] uppercase tracking-widest text-white/60">
+                <div className="mb-2 text-[color:var(--oligens-gold)]">
+                  Iteration Trace
+                </div>
+                <ul className="space-y-1">
+                  {rapport.historique.map((h) => (
+                    <li key={h.iteration} className="flex justify-between">
+                      <span>#{h.iteration}</span>
+                      <span className="text-white/80">
+                        AI · {(h.proba * 100).toFixed(1)}%
+                      </span>
+                      <span className="text-white/40">
+                        {h.anomalies.map((a) => a.nom).join(" · ")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Bottom panel — humanized output */}
         {humanized && (
