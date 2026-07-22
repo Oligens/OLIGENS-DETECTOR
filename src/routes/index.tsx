@@ -44,6 +44,9 @@ function OligensPage() {
   const [metrics, setMetrics] = useState<DetectionMetrics | null>(null);
   const [humanized, setHumanized] = useState<HumanizeResult | null>(null);
   const [humanizing, setHumanizing] = useState(false);
+  const [rapport, setRapport] = useState<HumanizerRapport | null>(null);
+  const [ollamaBusy, setOllamaBusy] = useState(false);
+  const [ollamaError, setOllamaError] = useState<string | null>(null);
   const [cpu, setCpu] = useState(23);
   const [ram, setRam] = useState(41);
   const fileRef = useRef<HTMLInputElement>(null);
