@@ -573,6 +573,37 @@ function verdict(aiScore: number): string {
   return "Very human";
 }
 
+function RapportStat({
+  label,
+  value,
+  gold,
+}: {
+  label: string;
+  value: string;
+  gold?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        gold
+          ? "border-[color:var(--oligens-gold)]/50 bg-[rgba(255,215,0,0.06)]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/50">
+        {label}
+      </div>
+      <div
+        className={`mt-1 font-display text-xl font-semibold ${
+          gold ? "text-[color:var(--oligens-gold)]" : "text-white"
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function SectionHeader({
   index,
   title,
