@@ -7,11 +7,12 @@ import { MetricBar } from "@/components/MetricBar";
 import { SoundWave } from "@/components/SoundWave";
 import {
   chunkText,
+  cosineSimilarity,
   detect,
-  humanize,
   type DetectionMetrics,
   type HumanizeResult,
 } from "@/lib/detector";
+import { TextHumanizer, type HumanizerRapport } from "@/utils/TextHumanizer";
 import logoAsset from "@/assets/oligens-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
