@@ -7,11 +7,12 @@ import { MetricBar } from "@/components/MetricBar";
 import { SoundWave } from "@/components/SoundWave";
 import {
   chunkText,
+  cosineSimilarity,
   detect,
-  humanize,
   type DetectionMetrics,
   type HumanizeResult,
 } from "@/lib/detector";
+import { TextHumanizer, type HumanizerRapport } from "@/utils/TextHumanizer";
 import logoAsset from "@/assets/oligens-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
@@ -43,6 +44,9 @@ function OligensPage() {
   const [metrics, setMetrics] = useState<DetectionMetrics | null>(null);
   const [humanized, setHumanized] = useState<HumanizeResult | null>(null);
   const [humanizing, setHumanizing] = useState(false);
+  const [rapport, setRapport] = useState<HumanizerRapport | null>(null);
+  const [ollamaBusy, setOllamaBusy] = useState(false);
+  const [ollamaError, setOllamaError] = useState<string | null>(null);
   const [cpu, setCpu] = useState(23);
   const [ram, setRam] = useState(41);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -92,12 +96,66 @@ function OligensPage() {
   const runHumanize = useCallback(async () => {
     if (!text.trim()) return;
     setHumanizing(true);
-    await new Promise((r) => setTimeout(r, 400));
-    const result = humanize(text);
-    setHumanized(result);
-    setMetrics(result.after);
+    setOllamaError(null);
+    await new Promise((r) => setTimeout(r, 300));
+    const before = detect(text);
+    const humanizer = new TextHumanizer();
+    const { texteFinal, rapport: rap } = humanizer.humanize(text, {
+      seuilCible: 0.35,
+      iterationsMax: 6,
+      intensite: 0.7,
+    });
+    const after = detect(texteFinal);
+    const similarity = cosineSimilarity(text, texteFinal);
+    setHumanized({ text: texteFinal, similarity, before, after });
+    setRapport(rap);
+    setMetrics(after);
     setTab("humanized");
     setHumanizing(false);
+  }, [text]);
+
+  const runOllama = useCallback(async () => {
+    if (!text.trim()) return;
+    setOllamaBusy(true);
+    setOllamaError(null);
+    try {
+      const prompt = `Rewrite the following text to sound naturally human-written. Preserve meaning, structure and language. Vary sentence length, use contractions and casual transitions, avoid AI clichés ("in conclusion", "furthermore", "delve into", "tapestry", "landscape of"). Return ONLY the rewritten text.\n\nTEXT:\n${text}`;
+      const res = await fetch("http://localhost:11434/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "llama3.2:3b", prompt, stream: false }),
+      });
+      if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
+      const data = (await res.json()) as { response?: string };
+      const rewritten = (data.response || "").trim();
+      if (!rewritten) throw new Error("Empty response from Ollama");
+      const before = detect(text);
+      const after = detect(rewritten);
+      const similarity = cosineSimilarity(text, rewritten);
+      setHumanized({ text: rewritten, similarity, before, after });
+      setRapport({
+        proba_initiale: before.aiScore,
+        proba_finale: after.aiScore,
+        reduction_pourcent: (before.aiScore - after.aiScore) * 100,
+        iterations_realisees: 1,
+        historique: [],
+        features_finales: [],
+        decision:
+          after.aiScore < 0.35
+            ? "✅ Ollama rewrite — human-style"
+            : "⚠️ Ollama rewrite — threshold not reached",
+      });
+      setMetrics(after);
+      setTab("humanized");
+    } catch (e) {
+      setOllamaError(
+        e instanceof Error
+          ? `${e.message} — is Ollama running on localhost:11434 with llama3.2:3b?`
+          : "Ollama call failed",
+      );
+    } finally {
+      setOllamaBusy(false);
+    }
   }, [text]);
 
   const handleFile = useCallback(async (file: File) => {
@@ -264,6 +322,8 @@ function OligensPage() {
                   setText("");
                   setMetrics(null);
                   setHumanized(null);
+                  setRapport(null);
+                  setOllamaError(null);
                   setFileName(null);
                 }}
                 className="oligens-btn-ghost"
@@ -358,10 +418,80 @@ function OligensPage() {
                       : "HUMANIZE TEXT (OPTIMIZATION)"}
                   </span>
                 </button>
+                <button
+                  onClick={runOllama}
+                  disabled={ollamaBusy || !text.trim()}
+                  className="oligens-btn-ghost mt-2 w-full"
+                  title="Requires Ollama running locally with llama3.2:3b"
+                >
+                  {ollamaBusy
+                    ? "CALLING OLLAMA…"
+                    : "FALLBACK · LOCAL OLLAMA (llama3.2:3b)"}
+                </button>
+                {ollamaError && (
+                  <div className="mt-2 rounded-md border border-red-400/30 bg-red-500/5 p-2 font-mono text-[10px] uppercase tracking-widest text-red-300">
+                    {ollamaError}
+                  </div>
+                )}
               </>
             )}
           </div>
         </div>
+
+        {rapport && (
+          <section className="glass-panel mt-6 rounded-2xl p-5 md:p-6">
+            <SectionHeader
+              index="R"
+              title="Humanizer Report"
+              hint={rapport.decision}
+            />
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+              <RapportStat
+                label="Initial AI"
+                value={`${(rapport.proba_initiale * 100).toFixed(1)}%`}
+              />
+              <RapportStat
+                label="Final AI"
+                value={`${(rapport.proba_finale * 100).toFixed(1)}%`}
+                gold
+              />
+              <RapportStat
+                label="Reduction"
+                value={`${rapport.reduction_pourcent.toFixed(1)}%`}
+              />
+              <RapportStat
+                label="Iterations"
+                value={String(rapport.iterations_realisees)}
+              />
+              <RapportStat
+                label="Status"
+                value={
+                  rapport.proba_finale < 0.35 ? "NEUTRALIZED" : "PARTIAL"
+                }
+              />
+            </div>
+            {rapport.historique.length > 0 && (
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 font-mono text-[10px] uppercase tracking-widest text-white/60">
+                <div className="mb-2 text-[color:var(--oligens-gold)]">
+                  Iteration Trace
+                </div>
+                <ul className="space-y-1">
+                  {rapport.historique.map((h) => (
+                    <li key={h.iteration} className="flex justify-between">
+                      <span>#{h.iteration}</span>
+                      <span className="text-white/80">
+                        AI · {(h.proba * 100).toFixed(1)}%
+                      </span>
+                      <span className="text-white/40">
+                        {h.anomalies.map((a) => a.nom).join(" · ")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Bottom panel — humanized output */}
         {humanized && (
@@ -441,6 +571,37 @@ function verdict(aiScore: number): string {
   if (aiScore > 0.4) return "Mixed / uncertain";
   if (aiScore > 0.2) return "Likely human";
   return "Very human";
+}
+
+function RapportStat({
+  label,
+  value,
+  gold,
+}: {
+  label: string;
+  value: string;
+  gold?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        gold
+          ? "border-[color:var(--oligens-gold)]/50 bg-[rgba(255,215,0,0.06)]"
+          : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
+      <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/50">
+        {label}
+      </div>
+      <div
+        className={`mt-1 font-display text-xl font-semibold ${
+          gold ? "text-[color:var(--oligens-gold)]" : "text-white"
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
 }
 
 function SectionHeader({
