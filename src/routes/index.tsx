@@ -259,7 +259,33 @@ function OligensPage() {
             <span>System · ONLINE</span>
           </div>
         </div>
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="oligens-btn-ghost ml-3 !px-3 !py-1.5 text-[10px]"
+          title="View analysis & humanization history"
+        >
+          History · {history.length}
+        </button>
       </header>
+
+      <HistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        items={history}
+        onClear={() => {
+          clearHistory();
+          setHistory([]);
+        }}
+        onDelete={(id) => setHistory(deleteRecord(id))}
+        onReload={(rec) => {
+          setText(rec.originalText);
+          setMetrics(null);
+          setHumanized(null);
+          setRapport(null);
+          setHistoryOpen(false);
+        }}
+      />
+
 
       <main className="mx-auto max-w-7xl px-3 pb-24 pt-6 md:px-6">
         {/* Hero */}
