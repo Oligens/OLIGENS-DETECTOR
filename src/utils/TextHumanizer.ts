@@ -408,7 +408,7 @@ class TextMutator {
           "however",
         ].includes(firstWord)
       ) {
-        const filler = this.pickRandom(HUMAN_FILLERS.start);
+        const filler = this.pickRandom(this.activeFillers().start);
         const rest = trimmed.split(/\s+/).slice(1).join(" ");
         const restLower = rest.charAt(0).toLowerCase() + rest.slice(1);
         return filler + " " + restLower;
