@@ -44,8 +44,9 @@ interface HumanizerConfig {
   seuilCible: number;
   iterationsMax: number;
   intensite: number;
-  langue: "fr" | "en" | "mixte";
+  langue: SupportedLang | "AUTO" | "mixte";
 }
+
 
 const SYNONYM_MAP: Record<string, string[]> = {
   therefore: ["so", "thus", "hence", "as a result"],
@@ -81,67 +82,132 @@ const SYNONYM_MAP: Record<string, string[]> = {
   aider: ["secourir", "soutenir", "épauler"],
   tenter: ["essayer", "chercher à", "s'efforcer de"],
   suffisant: ["assez", "ample", "correct", "bon"],
+  // Spanish
+  "sin embargo": ["pero", "aunque", "no obstante", "aun así"],
+  "por lo tanto": ["así que", "por eso", "de modo que"],
+  "en conclusión": ["para terminar", "en resumen", "al final", "en fin"],
+  además: ["también", "aparte", "encima", "y de paso"],
+  utilizar: ["usar", "emplear", "aplicar"],
+  implementar: ["aplicar", "poner en marcha", "llevar a cabo"],
+  significativo: ["importante", "grande", "clave", "notable"],
+  numerosos: ["muchos", "varios", "un montón de"],
+  demostrar: ["mostrar", "probar", "revelar"],
+  obtener: ["conseguir", "lograr", "sacar"],
+  // Haitian Creole
+  poutan: ["men", "malgre sa", "kanmenm"],
+  "an konklizyon": ["pou fini", "an rezime", "nan fen jounen an", "finalman"],
+  "li enpòtan": ["li gen anpil enpòtans", "nou dwe sonje", "fòk nou sonje"],
+  itilize: ["sèvi ak", "aplike", "pran"],
+  jwenn: ["gen", "resevwa", "dekwoche"],
+  montre: ["fè wè", "pwouve", "revele"],
 };
 
-const IA_PHRASE_LIST = [
-  "il est important de noter",
-  "il convient de souligner",
-  "il faut garder à l'esprit",
-  "dans le paysage actuel",
-  "il s'agit d'un enjeu majeur",
-  "cette approche permet",
-  "il est essentiel de comprendre",
-  "cela dit",
-  "d'un point de vue",
-  "it is important to note",
-  "it should be noted",
-  "it is worth noting",
-  "in the current landscape",
-  "this approach allows",
-  "it is crucial to understand",
-  "that being said",
-  "from a perspective",
-  "plays a crucial role",
-  "il est également important",
-  "il est à noter que",
-  "il faut souligner que",
-  "il est intéressant de constater",
-  "en ce qui concerne",
-  "dans ce contexte",
-  "de manière générale",
-  "il est possible de",
-  "il est nécessaire de",
-  "il est recommandé de",
-  "il est préférable de",
-];
+import { detectLanguage, type SupportedLang } from "./languageDetect";
 
+const IA_PHRASE_LIST_BY_LANG: Record<SupportedLang, string[]> = {
+  FR: [
+    "il est important de noter",
+    "il convient de souligner",
+    "il faut garder à l'esprit",
+    "dans le paysage actuel",
+    "il s'agit d'un enjeu majeur",
+    "cette approche permet",
+    "il est essentiel de comprendre",
+    "cela dit",
+    "d'un point de vue",
+    "il est également important",
+    "il est à noter que",
+    "il faut souligner que",
+    "il est intéressant de constater",
+    "en ce qui concerne",
+    "dans ce contexte",
+    "de manière générale",
+    "il est possible de",
+    "il est nécessaire de",
+    "il est recommandé de",
+    "il est préférable de",
+  ],
+  EN: [
+    "it is important to note",
+    "it should be noted",
+    "it is worth noting that",
+    "it is worth noting",
+    "in the current landscape",
+    "in today's digital landscape",
+    "this approach allows",
+    "it is crucial to understand",
+    "that being said",
+    "from a perspective",
+    "plays a crucial role",
+    "plays a pivotal role",
+    "delve into",
+    "testament to",
+    "furthermore",
+    "moreover",
+    "a rich tapestry of",
+  ],
+  ES: [
+    "es importante destacar que",
+    "es importante mencionar que",
+    "en el panorama actual",
+    "cabe mencionar que",
+    "cabe destacar que",
+    "por lo tanto",
+    "en conclusión",
+    "en resumen",
+    "sin embargo",
+    "no obstante",
+    "juega un papel crucial",
+    "juega un papel fundamental",
+  ],
+  HT: [
+    "li enpòtan pou nou note",
+    "li enpòtan pou note",
+    "nan kad sa a",
+    "poutan",
+    "an konklizyon",
+    "pou fini",
+    "li klè ke",
+    "li nesesè pou",
+    "an rezime",
+    "nan kontèks sa a",
+    "jwe yon wòl enpòtan",
+  ],
+};
+
+// Merged fallback (used when language is "mixte" or unknown)
+const IA_PHRASE_LIST = Object.values(IA_PHRASE_LIST_BY_LANG).flat();
+
+const HUMAN_FILLERS_BY_LANG: Record<SupportedLang, { start: string[]; emotional: string[]; hesitation: string[] }> = {
+  FR: {
+    start: ["Bon,", "Eh bien,", "Alors,", "Bref,", "Tiens,", "En fait,"],
+    emotional: ["franchement", "vraiment", "absolument", "totalement", "clairement", "honnêtement"],
+    hesitation: ["en quelque sorte", "pour ainsi dire", "en fait", "en réalité"],
+  },
+  EN: {
+    start: ["You know,", "Well,", "Honestly,", "Actually,", "Look,", "So,"],
+    emotional: ["truly", "really", "absolutely", "honestly", "genuinely"],
+    hesitation: ["sort of", "kind of", "in a way", "pretty much"],
+  },
+  ES: {
+    start: ["Bueno,", "Mira,", "Sinceramente,", "La verdad,", "Vaya,"],
+    emotional: ["realmente", "verdaderamente", "absolutamente", "honestamente", "sinceramente"],
+    hesitation: ["más o menos", "en cierto modo", "por así decirlo", "en realidad"],
+  },
+  HT: {
+    start: ["Ebyen,", "Gade,", "An verite,", "Franchman,", "Tande,"],
+    emotional: ["vrèman", "toutbon", "absoliman", "onètman", "reyèlman"],
+    hesitation: ["yon jan", "kon si", "yon fason", "an reyalite"],
+  },
+};
+
+// Legacy alias retained for callers that don't pass a language.
 const HUMAN_FILLERS = {
-  start: ["Bon,", "Eh bien,", "Alors,", "Bref,", "Tiens,", "You know,", "Well,", "Honestly,", "Actually,"],
-  emotional: [
-    "franchement",
-    "vraiment",
-    "absolument",
-    "totalement",
-    "simplement",
-    "clairement",
-    "honnêtement",
-    "truly",
-    "really",
-    "absolutely",
-    "honestly",
-  ],
-  hesitation: [
-    "en quelque sorte",
-    "pour ainsi dire",
-    "si je puis dire",
-    "en fait",
-    "en réalité",
-    "sort of",
-    "kind of",
-    "in a way",
-    "pretty much",
-  ],
+  start: [...HUMAN_FILLERS_BY_LANG.FR.start, ...HUMAN_FILLERS_BY_LANG.EN.start],
+  emotional: [...HUMAN_FILLERS_BY_LANG.FR.emotional, ...HUMAN_FILLERS_BY_LANG.EN.emotional],
+  hesitation: [...HUMAN_FILLERS_BY_LANG.FR.hesitation, ...HUMAN_FILLERS_BY_LANG.EN.hesitation],
 };
+
 
 const CONTRACTIONS: Record<string, string> = {
   "do not": "don't",
@@ -189,11 +255,28 @@ class TextMutator {
     return text.match(/[^.!?]+[.!?]+/g) || [text];
   }
 
+  private activePhraseList(): string[] {
+    const lg = this.config.langue;
+    if (lg === "FR" || lg === "EN" || lg === "ES" || lg === "HT") {
+      return IA_PHRASE_LIST_BY_LANG[lg];
+    }
+    return IA_PHRASE_LIST;
+  }
+
+  private activeFillers() {
+    const lg = this.config.langue;
+    if (lg === "FR" || lg === "EN" || lg === "ES" || lg === "HT") {
+      return HUMAN_FILLERS_BY_LANG[lg];
+    }
+    return HUMAN_FILLERS;
+  }
+
   mutatePhrases(text: string, intensity: number): string {
     let result = text;
     let replaced = 0;
-    const maxReplace = Math.floor(IA_PHRASE_LIST.length * intensity * 0.6);
-    for (const phrase of IA_PHRASE_LIST) {
+    const list = this.activePhraseList();
+    const maxReplace = Math.floor(list.length * intensity * 0.6);
+    for (const phrase of list) {
       if (replaced >= maxReplace) break;
       const regex = new RegExp(
         "\\b" + phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b",
@@ -234,7 +317,7 @@ class TextMutator {
       return this.pickRandom(["actuellement", "dans ce contexte", "aujourd'hui", "pour l'instant"]);
     }
     return (
-      this.pickRandom(HUMAN_FILLERS.start) +
+      this.pickRandom(this.activeFillers().start) +
       " " +
       this.pickRandom(["on peut dire", "c'est à dire", "autrement dit"])
     );
@@ -325,7 +408,7 @@ class TextMutator {
           "however",
         ].includes(firstWord)
       ) {
-        const filler = this.pickRandom(HUMAN_FILLERS.start);
+        const filler = this.pickRandom(this.activeFillers().start);
         const rest = trimmed.split(/\s+/).slice(1).join(" ");
         const restLower = rest.charAt(0).toLowerCase() + rest.slice(1);
         return filler + " " + restLower;
@@ -343,7 +426,7 @@ class TextMutator {
       if (words.length < 6) return s;
       const pos = Math.floor(this.rng() * 3) + 1;
       if (pos >= words.length) return s;
-      const filler = this.pickRandom(HUMAN_FILLERS.emotional);
+      const filler = this.pickRandom(this.activeFillers().emotional);
       words.splice(pos, 0, filler);
       return words.join(" ");
     });
@@ -453,6 +536,7 @@ export interface HumanizerRapport {
   historique: { iteration: number; proba: number; anomalies: any[] }[];
   features_finales: Array<{ nom: string; z_score: number; contribution: number }>;
   decision: string;
+  langue: SupportedLang;
 }
 
 export class TextHumanizer {
@@ -466,12 +550,17 @@ export class TextHumanizer {
     text: string,
     config: Partial<HumanizerConfig> = {},
   ): { texteFinal: string; rapport: HumanizerRapport } {
+    const requested = config.langue ?? "AUTO";
+    const langue: SupportedLang =
+      requested === "AUTO" || requested === "mixte"
+        ? detectLanguage(text)
+        : (requested as SupportedLang);
     const cfg: HumanizerConfig = {
       seuilCible: 0.35,
       iterationsMax: 6,
       intensite: 0.7,
-      langue: "mixte",
       ...config,
+      langue,
     };
 
     const mutator = new TextMutator(cfg);
@@ -530,6 +619,7 @@ export class TextHumanizer {
         finalProba < 0.35
           ? "✅ Texte neutralisé (style humain)"
           : "⚠️ Seuil non atteint, révision manuelle conseillée",
+      langue,
     };
 
     return { texteFinal: finalText, rapport };
