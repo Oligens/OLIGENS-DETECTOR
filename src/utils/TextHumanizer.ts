@@ -160,33 +160,36 @@ const IA_PHRASE_LIST_BY_LANG: Record<SupportedLang, string[]> = {
 // Merged fallback (used when language is "mixte" or unknown)
 const IA_PHRASE_LIST = Object.values(IA_PHRASE_LIST_BY_LANG).flat();
 
-const HUMAN_FILLERS = {
-  start: ["Bon,", "Eh bien,", "Alors,", "Bref,", "Tiens,", "You know,", "Well,", "Honestly,", "Actually,"],
-  emotional: [
-    "franchement",
-    "vraiment",
-    "absolument",
-    "totalement",
-    "simplement",
-    "clairement",
-    "honnêtement",
-    "truly",
-    "really",
-    "absolutely",
-    "honestly",
-  ],
-  hesitation: [
-    "en quelque sorte",
-    "pour ainsi dire",
-    "si je puis dire",
-    "en fait",
-    "en réalité",
-    "sort of",
-    "kind of",
-    "in a way",
-    "pretty much",
-  ],
+const HUMAN_FILLERS_BY_LANG: Record<SupportedLang, { start: string[]; emotional: string[]; hesitation: string[] }> = {
+  FR: {
+    start: ["Bon,", "Eh bien,", "Alors,", "Bref,", "Tiens,", "En fait,"],
+    emotional: ["franchement", "vraiment", "absolument", "totalement", "clairement", "honnêtement"],
+    hesitation: ["en quelque sorte", "pour ainsi dire", "en fait", "en réalité"],
+  },
+  EN: {
+    start: ["You know,", "Well,", "Honestly,", "Actually,", "Look,", "So,"],
+    emotional: ["truly", "really", "absolutely", "honestly", "genuinely"],
+    hesitation: ["sort of", "kind of", "in a way", "pretty much"],
+  },
+  ES: {
+    start: ["Bueno,", "Mira,", "Sinceramente,", "La verdad,", "Vaya,"],
+    emotional: ["realmente", "verdaderamente", "absolutamente", "honestamente", "sinceramente"],
+    hesitation: ["más o menos", "en cierto modo", "por así decirlo", "en realidad"],
+  },
+  HT: {
+    start: ["Ebyen,", "Gade,", "An verite,", "Franchman,", "Tande,"],
+    emotional: ["vrèman", "toutbon", "absoliman", "onètman", "reyèlman"],
+    hesitation: ["yon jan", "kon si", "yon fason", "an reyalite"],
+  },
 };
+
+// Legacy alias retained for callers that don't pass a language.
+const HUMAN_FILLERS = {
+  start: [...HUMAN_FILLERS_BY_LANG.FR.start, ...HUMAN_FILLERS_BY_LANG.EN.start],
+  emotional: [...HUMAN_FILLERS_BY_LANG.FR.emotional, ...HUMAN_FILLERS_BY_LANG.EN.emotional],
+  hesitation: [...HUMAN_FILLERS_BY_LANG.FR.hesitation, ...HUMAN_FILLERS_BY_LANG.EN.hesitation],
+};
+
 
 const CONTRACTIONS: Record<string, string> = {
   "do not": "don't",
