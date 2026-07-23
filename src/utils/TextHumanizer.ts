@@ -255,11 +255,28 @@ class TextMutator {
     return text.match(/[^.!?]+[.!?]+/g) || [text];
   }
 
+  private activePhraseList(): string[] {
+    const lg = this.config.langue;
+    if (lg === "FR" || lg === "EN" || lg === "ES" || lg === "HT") {
+      return IA_PHRASE_LIST_BY_LANG[lg];
+    }
+    return IA_PHRASE_LIST;
+  }
+
+  private activeFillers() {
+    const lg = this.config.langue;
+    if (lg === "FR" || lg === "EN" || lg === "ES" || lg === "HT") {
+      return HUMAN_FILLERS_BY_LANG[lg];
+    }
+    return HUMAN_FILLERS;
+  }
+
   mutatePhrases(text: string, intensity: number): string {
     let result = text;
     let replaced = 0;
-    const maxReplace = Math.floor(IA_PHRASE_LIST.length * intensity * 0.6);
-    for (const phrase of IA_PHRASE_LIST) {
+    const list = this.activePhraseList();
+    const maxReplace = Math.floor(list.length * intensity * 0.6);
+    for (const phrase of list) {
       if (replaced >= maxReplace) break;
       const regex = new RegExp(
         "\\b" + phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b",
