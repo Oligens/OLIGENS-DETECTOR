@@ -44,8 +44,9 @@ interface HumanizerConfig {
   seuilCible: number;
   iterationsMax: number;
   intensite: number;
-  langue: "fr" | "en" | "mixte";
+  langue: SupportedLang | "AUTO" | "mixte";
 }
+
 
 const SYNONYM_MAP: Record<string, string[]> = {
   therefore: ["so", "thus", "hence", "as a result"],
