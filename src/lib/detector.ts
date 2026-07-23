@@ -153,16 +153,37 @@ export function countNgramMarkers(text: string): number {
   return hits;
 }
 
+/** Drop structural titles/headers (short lines w/o terminal punctuation, numbered headings). */
+export function filterContentSentences(sentences: string[]): string[] {
+  return sentences.filter((s) => {
+    const trimmed = s.trim();
+    if (!trimmed) return false;
+    const wordCount = trimmed.split(/\s+/).length;
+    const hasTerminal = /[.!?]$/.test(trimmed);
+    // Numbered headings like "1.", "1)", "I.", "A." optionally followed by a short title
+    if (/^([0-9]+|[IVX]+|[A-Z])[.)]\s+\S/.test(trimmed) && wordCount < 10 && !hasTerminal) {
+      return false;
+    }
+    // Short lines without ending punctuation are almost certainly headers
+    if (wordCount < 5 && !hasTerminal) return false;
+    return true;
+  });
+}
+
 export function detect(text: string): DetectionMetrics {
   const sentences = splitSentences(text);
+  const contentSentences = filterContentSentences(sentences);
   const words = tokenize(text);
   const perplexity = computePerplexity(text);
-  const { variance, avg } = computeBurstiness(sentences);
+  const { variance, avg } = computeBurstiness(
+    contentSentences.length >= 2 ? contentSentences : sentences,
+  );
   const ngramHits = countNgramMarkers(text);
-  const nTotal = Math.max(1, sentences.length);
+  const nTotal = Math.max(1, contentSentences.length || sentences.length);
 
   const perplexityNorm = Math.min(1, perplexity / P_MAX);
-  const burstinessNorm = Math.min(1, variance / VAR_MAX);
+  // Cap so a single very long/short sentence can't push burstiness contribution to 0
+  const burstinessNorm = Math.min(BURSTINESS_NORM_CAP, variance / VAR_MAX);
   const ngramDensity = Math.min(1, ngramHits / nTotal);
 
   // Contribution: higher when text looks AI
@@ -172,7 +193,13 @@ export function detect(text: string): DetectionMetrics {
     W3 * ngramDensity;
 
   // Center around 0.5 → map [-0.5, 0.5] → sigmoid stretch
-  const aiScore = sigmoid((raw - 0.5) * 6);
+  let aiScore = sigmoid((raw - 0.5) * 6);
+
+  // Dynamic thresholding: saturated N-gram markers or very low perplexity
+  // are strong AI signals — enforce a minimum baseline probability.
+  if (ngramDensity >= 1 || perplexity <= 10.0) {
+    aiScore = Math.min(1, aiScore + 0.35);
+  }
 
   return {
     perplexity,
@@ -188,6 +215,7 @@ export function detect(text: string): DetectionMetrics {
     avgSentenceLength: avg,
   };
 }
+
 
 // -------- Humanization Engine --------
 
