@@ -137,7 +137,15 @@ function OligensPage() {
     setMetrics(after);
     setTab("humanized");
     setHumanizing(false);
-  }, [text]);
+    persist({
+      originalText: text,
+      humanizedText: texteFinal,
+      initialScore: before.aiScore,
+      finalScore: after.aiScore,
+      language: rap.langue,
+      type: "HUMANIZATION",
+    });
+  }, [text, persist]);
 
   const runOllama = useCallback(async () => {
     if (!text.trim()) return;
@@ -157,6 +165,7 @@ function OligensPage() {
       const before = detect(text);
       const after = detect(rewritten);
       const similarity = cosineSimilarity(text, rewritten);
+      const lang = detectLanguage(text);
       setHumanized({ text: rewritten, similarity, before, after });
       setRapport({
         proba_initiale: before.aiScore,
@@ -169,9 +178,18 @@ function OligensPage() {
           after.aiScore < 0.35
             ? "✅ Ollama rewrite — human-style"
             : "⚠️ Ollama rewrite — threshold not reached",
+        langue: lang,
       });
       setMetrics(after);
       setTab("humanized");
+      persist({
+        originalText: text,
+        humanizedText: rewritten,
+        initialScore: before.aiScore,
+        finalScore: after.aiScore,
+        language: lang,
+        type: "HUMANIZATION",
+      });
     } catch (e) {
       setOllamaError(
         e instanceof Error
