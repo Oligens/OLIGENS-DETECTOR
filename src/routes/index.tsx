@@ -805,6 +805,156 @@ function ComparePane({
   );
 }
 
+function langBadgeColor(lang: string): string {
+  switch (lang) {
+    case "FR":
+      return "border-sky-400/40 bg-sky-400/10 text-sky-200";
+    case "EN":
+      return "border-emerald-400/40 bg-emerald-400/10 text-emerald-200";
+    case "ES":
+      return "border-rose-400/40 bg-rose-400/10 text-rose-200";
+    case "HT":
+      return "border-fuchsia-400/40 bg-fuchsia-400/10 text-fuchsia-200";
+    default:
+      return "border-white/20 bg-white/5 text-white/70";
+  }
+}
+
+function HistoryDrawer({
+  open,
+  onClose,
+  items,
+  onClear,
+  onDelete,
+  onReload,
+}: {
+  open: boolean;
+  onClose: () => void;
+  items: HistoryRecord[];
+  onClear: () => void;
+  onDelete: (id: string) => void;
+  onReload: (rec: HistoryRecord) => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div
+        className="flex-1 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden
+      />
+      <aside className="glass-panel h-full w-full max-w-md overflow-y-auto rounded-l-2xl border-l border-white/10 p-5 md:p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.4em] text-[color:var(--oligens-gold)]">
+              / H
+            </div>
+            <h2 className="mt-0.5 font-display text-xl font-semibold tracking-wide text-white">
+              History · Historique
+            </h2>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onClear}
+              disabled={items.length === 0}
+              className="oligens-btn-ghost !px-3 !py-1.5 text-[10px]"
+            >
+              Clear All
+            </button>
+            <button
+              onClick={onClose}
+              className="oligens-btn-ghost !px-3 !py-1.5 text-[10px]"
+            >
+              Close ✕
+            </button>
+          </div>
+        </div>
+
+        {items.length === 0 ? (
+          <div className="grid min-h-[200px] place-items-center rounded-xl border border-dashed border-white/10 bg-black/20 font-mono text-[11px] uppercase tracking-widest text-white/40">
+            No runs yet
+          </div>
+        ) : (
+          <ul className="space-y-3">
+            {items.map((r) => {
+              const initial = Math.round(r.initialScore * 100);
+              const final =
+                r.finalScore != null ? Math.round(r.finalScore * 100) : null;
+              const date = new Date(r.timestamp);
+              return (
+                <li
+                  key={r.id}
+                  className="rounded-xl border border-white/10 bg-white/[0.02] p-3"
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-widest">
+                    <span
+                      className={`rounded-md border px-2 py-0.5 ${
+                        r.type === "HUMANIZATION"
+                          ? "border-[color:var(--oligens-gold)]/50 bg-[rgba(255,215,0,0.08)] text-[color:var(--oligens-gold)]"
+                          : "border-white/20 bg-white/5 text-white/70"
+                      }`}
+                    >
+                      {r.type}
+                    </span>
+                    <span
+                      className={`rounded-md border px-2 py-0.5 ${langBadgeColor(r.language)}`}
+                      title={languageLabel(r.language as SupportedLang)}
+                    >
+                      {r.language}
+                    </span>
+                    {final != null ? (
+                      <span className="rounded-md border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-emerald-200">
+                        {initial}% ➔ {final}%
+                      </span>
+                    ) : (
+                      <span className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-white/70">
+                        AI · {initial}%
+                      </span>
+                    )}
+                    <span className="ml-auto text-white/40">
+                      {date.toLocaleDateString()} {date.toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div className="mb-2 max-h-16 overflow-hidden font-mono text-[11px] leading-relaxed text-white/60">
+                    {r.originalText.slice(0, 220)}
+                    {r.originalText.length > 220 ? "…" : ""}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => onReload(r)}
+                      className="oligens-btn-ghost !px-3 !py-1 text-[10px]"
+                    >
+                      Reload in Editor
+                    </button>
+                    {r.humanizedText && (
+                      <button
+                        onClick={() =>
+                          navigator.clipboard.writeText(r.humanizedText!)
+                        }
+                        className="oligens-btn-ghost !px-3 !py-1 text-[10px]"
+                      >
+                        Copy Humanized
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onDelete(r.id)}
+                      className="oligens-btn-ghost !px-3 !py-1 text-[10px] text-red-300"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+
+
 /* ------- Icons ------- */
 function UploadIcon() {
   return (
