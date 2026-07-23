@@ -426,7 +426,7 @@ class TextMutator {
       if (words.length < 6) return s;
       const pos = Math.floor(this.rng() * 3) + 1;
       if (pos >= words.length) return s;
-      const filler = this.pickRandom(HUMAN_FILLERS.emotional);
+      const filler = this.pickRandom(this.activeFillers().emotional);
       words.splice(pos, 0, filler);
       return words.join(" ");
     });
