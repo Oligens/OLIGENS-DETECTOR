@@ -619,6 +619,7 @@ export class TextHumanizer {
         finalProba < 0.35
           ? "✅ Texte neutralisé (style humain)"
           : "⚠️ Seuil non atteint, révision manuelle conseillée",
+      langue,
     };
 
     return { texteFinal: finalText, rapport };
