@@ -110,7 +110,13 @@ function OligensPage() {
     const m = detect(acc);
     setMetrics(m);
     setAnalyzing(false);
-  }, [text]);
+    persist({
+      originalText: text,
+      initialScore: m.aiScore,
+      language: detectLanguage(text),
+      type: "DETECTION",
+    });
+  }, [text, persist]);
 
   const runHumanize = useCallback(async () => {
     if (!text.trim()) return;
