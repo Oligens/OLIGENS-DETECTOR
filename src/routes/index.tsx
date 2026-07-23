@@ -13,6 +13,14 @@ import {
   type HumanizeResult,
 } from "@/lib/detector";
 import { TextHumanizer, type HumanizerRapport } from "@/utils/TextHumanizer";
+import { detectLanguage, languageLabel, type SupportedLang } from "@/utils/languageDetect";
+import {
+  clearHistory,
+  loadHistory,
+  saveRecord,
+  deleteRecord,
+  type HistoryRecord,
+} from "@/utils/historyStorage";
 import logoAsset from "@/assets/oligens-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
