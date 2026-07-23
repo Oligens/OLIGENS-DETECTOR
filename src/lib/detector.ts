@@ -48,13 +48,43 @@ const AI_TRANSITION_MARKERS = [
   "utilize",
   "in today's world",
   "in the modern era",
+  // French LLM transition phrases
+  "voici la marche à suivre",
+  "étape par étape",
+  "est régie principalement par",
+  "est régi principalement par",
+  "il est essentiel de",
+  "il est important de",
+  "il convient de",
+  "il convient de souligner",
+  "dans le cadre de",
+  "afin de garantir",
+  "afin d'assurer",
+  "il est à noter",
+  "il est nécessaire de",
+  "il est recommandé de",
+  "en effet",
+  "par ailleurs",
+  "par conséquent",
+  "de plus",
+  "en outre",
+  "dans un premier temps",
+  "dans un second temps",
+  "en résumé",
+  "en conclusion",
+  "il s'agit de",
+  "joue un rôle",
+  "joue un rôle crucial",
+  "dans le paysage actuel",
 ];
 
 const P_MAX = 8; // upper bound of "good" entropy
 const VAR_MAX = 120; // upper bound for sentence-length variance
+const BURSTINESS_NORM_CAP = 0.7; // cap so high variance alone can't zero the AI score
 const W1 = 0.5;
 const W2 = 0.3;
 const W3 = 0.2;
+
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
@@ -123,16 +153,37 @@ export function countNgramMarkers(text: string): number {
   return hits;
 }
 
+/** Drop structural titles/headers (short lines w/o terminal punctuation, numbered headings). */
+export function filterContentSentences(sentences: string[]): string[] {
+  return sentences.filter((s) => {
+    const trimmed = s.trim();
+    if (!trimmed) return false;
+    const wordCount = trimmed.split(/\s+/).length;
+    const hasTerminal = /[.!?]$/.test(trimmed);
+    // Numbered headings like "1.", "1)", "I.", "A." optionally followed by a short title
+    if (/^([0-9]+|[IVX]+|[A-Z])[.)]\s+\S/.test(trimmed) && wordCount < 10 && !hasTerminal) {
+      return false;
+    }
+    // Short lines without ending punctuation are almost certainly headers
+    if (wordCount < 5 && !hasTerminal) return false;
+    return true;
+  });
+}
+
 export function detect(text: string): DetectionMetrics {
   const sentences = splitSentences(text);
+  const contentSentences = filterContentSentences(sentences);
   const words = tokenize(text);
   const perplexity = computePerplexity(text);
-  const { variance, avg } = computeBurstiness(sentences);
+  const { variance, avg } = computeBurstiness(
+    contentSentences.length >= 2 ? contentSentences : sentences,
+  );
   const ngramHits = countNgramMarkers(text);
-  const nTotal = Math.max(1, sentences.length);
+  const nTotal = Math.max(1, contentSentences.length || sentences.length);
 
   const perplexityNorm = Math.min(1, perplexity / P_MAX);
-  const burstinessNorm = Math.min(1, variance / VAR_MAX);
+  // Cap so a single very long/short sentence can't push burstiness contribution to 0
+  const burstinessNorm = Math.min(BURSTINESS_NORM_CAP, variance / VAR_MAX);
   const ngramDensity = Math.min(1, ngramHits / nTotal);
 
   // Contribution: higher when text looks AI
@@ -142,7 +193,13 @@ export function detect(text: string): DetectionMetrics {
     W3 * ngramDensity;
 
   // Center around 0.5 → map [-0.5, 0.5] → sigmoid stretch
-  const aiScore = sigmoid((raw - 0.5) * 6);
+  let aiScore = sigmoid((raw - 0.5) * 6);
+
+  // Dynamic thresholding: saturated N-gram markers or very low perplexity
+  // are strong AI signals — enforce a minimum baseline probability.
+  if (ngramDensity >= 1 || perplexity <= 10.0) {
+    aiScore = Math.min(1, aiScore + 0.35);
+  }
 
   return {
     perplexity,
@@ -158,6 +215,7 @@ export function detect(text: string): DetectionMetrics {
     avgSentenceLength: avg,
   };
 }
+
 
 // -------- Humanization Engine --------
 
