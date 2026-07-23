@@ -61,6 +61,17 @@ function OligensPage() {
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [tab, setTab] = useState<"original" | "humanized">("original");
+  const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    setHistory(loadHistory());
+  }, []);
+
+  const persist = useCallback((rec: Omit<HistoryRecord, "id" | "timestamp">) => {
+    saveRecord(rec);
+    setHistory(loadHistory());
+  }, []);
 
   // Simulated system telemetry
   useEffect(() => {
