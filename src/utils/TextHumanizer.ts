@@ -317,7 +317,7 @@ class TextMutator {
       return this.pickRandom(["actuellement", "dans ce contexte", "aujourd'hui", "pour l'instant"]);
     }
     return (
-      this.pickRandom(HUMAN_FILLERS.start) +
+      this.pickRandom(this.activeFillers().start) +
       " " +
       this.pickRandom(["on peut dire", "c'est à dire", "autrement dit"])
     );
