@@ -48,13 +48,43 @@ const AI_TRANSITION_MARKERS = [
   "utilize",
   "in today's world",
   "in the modern era",
+  // French LLM transition phrases
+  "voici la marche à suivre",
+  "étape par étape",
+  "est régie principalement par",
+  "est régi principalement par",
+  "il est essentiel de",
+  "il est important de",
+  "il convient de",
+  "il convient de souligner",
+  "dans le cadre de",
+  "afin de garantir",
+  "afin d'assurer",
+  "il est à noter",
+  "il est nécessaire de",
+  "il est recommandé de",
+  "en effet",
+  "par ailleurs",
+  "par conséquent",
+  "de plus",
+  "en outre",
+  "dans un premier temps",
+  "dans un second temps",
+  "en résumé",
+  "en conclusion",
+  "il s'agit de",
+  "joue un rôle",
+  "joue un rôle crucial",
+  "dans le paysage actuel",
 ];
 
 const P_MAX = 8; // upper bound of "good" entropy
 const VAR_MAX = 120; // upper bound for sentence-length variance
+const BURSTINESS_NORM_CAP = 0.7; // cap so high variance alone can't zero the AI score
 const W1 = 0.5;
 const W2 = 0.3;
 const W3 = 0.2;
+
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
