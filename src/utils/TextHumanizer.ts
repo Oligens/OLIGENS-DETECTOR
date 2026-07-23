@@ -536,6 +536,7 @@ export interface HumanizerRapport {
   historique: { iteration: number; proba: number; anomalies: any[] }[];
   features_finales: Array<{ nom: string; z_score: number; contribution: number }>;
   decision: string;
+  langue: SupportedLang;
 }
 
 export class TextHumanizer {
@@ -549,12 +550,17 @@ export class TextHumanizer {
     text: string,
     config: Partial<HumanizerConfig> = {},
   ): { texteFinal: string; rapport: HumanizerRapport } {
+    const requested = config.langue ?? "AUTO";
+    const langue: SupportedLang =
+      requested === "AUTO" || requested === "mixte"
+        ? detectLanguage(text)
+        : (requested as SupportedLang);
     const cfg: HumanizerConfig = {
       seuilCible: 0.35,
       iterationsMax: 6,
       intensite: 0.7,
-      langue: "mixte",
       ...config,
+      langue,
     };
 
     const mutator = new TextMutator(cfg);
