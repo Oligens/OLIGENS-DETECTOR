@@ -82,6 +82,24 @@ const SYNONYM_MAP: Record<string, string[]> = {
   aider: ["secourir", "soutenir", "épauler"],
   tenter: ["essayer", "chercher à", "s'efforcer de"],
   suffisant: ["assez", "ample", "correct", "bon"],
+  // Spanish
+  "sin embargo": ["pero", "aunque", "no obstante", "aun así"],
+  "por lo tanto": ["así que", "por eso", "de modo que"],
+  "en conclusión": ["para terminar", "en resumen", "al final", "en fin"],
+  además: ["también", "aparte", "encima", "y de paso"],
+  utilizar: ["usar", "emplear", "aplicar"],
+  implementar: ["aplicar", "poner en marcha", "llevar a cabo"],
+  significativo: ["importante", "grande", "clave", "notable"],
+  numerosos: ["muchos", "varios", "un montón de"],
+  demostrar: ["mostrar", "probar", "revelar"],
+  obtener: ["conseguir", "lograr", "sacar"],
+  // Haitian Creole
+  poutan: ["men", "malgre sa", "kanmenm"],
+  "an konklizyon": ["pou fini", "an rezime", "nan fen jounen an", "finalman"],
+  "li enpòtan": ["li gen anpil enpòtans", "nou dwe sonje", "fòk nou sonje"],
+  itilize: ["sèvi ak", "aplike", "pran"],
+  jwenn: ["gen", "resevwa", "dekwoche"],
+  montre: ["fè wè", "pwouve", "revele"],
 };
 
 import { detectLanguage, type SupportedLang } from "./languageDetect";
