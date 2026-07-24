@@ -69,6 +69,7 @@ interface HumanizerConfig {
   iterationsMax: number;
   intensite: number;
   langue: SupportedLang | "AUTO" | "mixte";
+  register: Register;
 }
 
 
