@@ -854,12 +854,14 @@ function ComparePane({
   text,
   highlight,
   gold,
+  heat,
   actions,
 }: {
   title: string;
   text: string;
   highlight?: boolean;
   gold?: boolean;
+  heat?: SentenceHeat[];
   actions?: React.ReactNode;
 }) {
   return (
@@ -879,8 +881,69 @@ function ComparePane({
         {actions}
       </div>
       <div className="max-h-[360px] overflow-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-white/85">
-        {text}
+        {heat && heat.length > 0
+          ? heat.map((s, i) => {
+              const cls =
+                s.score > 0.75
+                  ? "bg-red-500/25 text-red-100"
+                  : s.score >= 0.4
+                    ? "bg-yellow-400/20 text-amber-100"
+                    : "";
+              const tip =
+                `AI ${(s.score * 100).toFixed(0)}%` +
+                (s.markers.length ? ` · markers: ${s.markers.join(", ")}` : "");
+              return (
+                <span
+                  key={i}
+                  title={tip}
+                  className={`rounded-sm px-0.5 ${cls}`}
+                >
+                  {s.text}
+                  {i < heat.length - 1 ? " " : ""}
+                </span>
+              );
+            })
+          : text}
       </div>
+    </div>
+  );
+}
+
+function HeatLegend() {
+  return (
+    <div className="hidden items-center gap-2 font-mono text-[9px] uppercase tracking-[0.25em] text-white/50 md:flex">
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-3 rounded-sm bg-red-500/50" />
+        &gt;75%
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-3 rounded-sm bg-yellow-400/50" />
+        40–75%
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-3 rounded-sm border border-white/30" />
+        &lt;40%
+      </span>
+    </div>
+  );
+}
+
+function IntegrityBadge({ score }: { score: number }) {
+  const pct = score * 100;
+  const ok = score >= 0.9;
+  return (
+    <div
+      className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest ${
+        ok
+          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+          : "border-red-400/40 bg-red-500/10 text-red-200"
+      }`}
+      title="Semantic preservation (TF cosine similarity)"
+    >
+      Semantic Preservation ·{" "}
+      <span className={ok ? "text-emerald-100" : "text-red-100"}>
+        {pct.toFixed(1)}% {ok ? "✅" : "⚠"}
+      </span>
     </div>
   );
 }
