@@ -12,7 +12,7 @@ import {
   type DetectionMetrics,
   type HumanizeResult,
 } from "@/lib/detector";
-import { TextHumanizer, type HumanizerRapport } from "@/utils/TextHumanizer";
+import { TextHumanizer, type HumanizerRapport, type Register } from "@/utils/TextHumanizer";
 import { detectLanguage, languageLabel, type SupportedLang } from "@/utils/languageDetect";
 import {
   clearHistory,
@@ -21,6 +21,7 @@ import {
   deleteRecord,
   type HistoryRecord,
 } from "@/utils/historyStorage";
+import { analyzeSentences, diffWords, type SentenceHeat } from "@/utils/textForensics";
 import logoAsset from "@/assets/oligens-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
@@ -63,6 +64,8 @@ function OligensPage() {
   const [tab, setTab] = useState<"original" | "humanized">("original");
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [register, setRegister] = useState<Register>("professionnel");
+  const [showDiff, setShowDiff] = useState(false);
 
   useEffect(() => {
     setHistory(loadHistory());
@@ -92,6 +95,19 @@ function OligensPage() {
     const chars = text.length;
     return { lines, words, chars };
   }, [text]);
+
+  const originalHeat = useMemo<SentenceHeat[]>(
+    () => (metrics && text.trim() ? analyzeSentences(text) : []),
+    [metrics, text],
+  );
+  const humanizedHeat = useMemo<SentenceHeat[]>(
+    () => (humanized ? analyzeSentences(humanized.text) : []),
+    [humanized],
+  );
+  const diffTokens = useMemo(
+    () => (humanized ? diffWords(text, humanized.text) : []),
+    [text, humanized],
+  );
 
   const runAnalysis = useCallback(async () => {
     if (!text.trim()) return;
@@ -129,6 +145,7 @@ function OligensPage() {
       seuilCible: 0.35,
       iterationsMax: 6,
       intensite: 0.7,
+      register,
     });
     const after = detect(texteFinal);
     const similarity = cosineSimilarity(text, texteFinal);
@@ -145,7 +162,7 @@ function OligensPage() {
       language: rap.langue,
       type: "HUMANIZATION",
     });
-  }, [text, persist]);
+  }, [text, persist, register]);
 
   const runOllama = useCallback(async () => {
     if (!text.trim()) return;
@@ -179,6 +196,9 @@ function OligensPage() {
             ? "✅ Ollama rewrite — human-style"
             : "⚠️ Ollama rewrite — threshold not reached",
         langue: lang,
+        register,
+        semanticIntegrityScore: similarity,
+        sentencesReverted: 0,
       });
       setMetrics(after);
       setTab("humanized");
@@ -199,7 +219,7 @@ function OligensPage() {
     } finally {
       setOllamaBusy(false);
     }
-  }, [text, persist]);
+  }, [text, persist, register]);
 
   const handleFile = useCallback(async (file: File) => {
     setFileName(file.name);
@@ -475,6 +495,22 @@ function OligensPage() {
                   </span>
                 </div>
 
+                <div className="mb-3 flex flex-col gap-1">
+                  <label className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/50">
+                    Style / Register
+                  </label>
+                  <select
+                    value={register}
+                    onChange={(e) => setRegister(e.target.value as Register)}
+                    className="w-full rounded-lg border border-white/15 bg-black/60 px-3 py-2 font-mono text-xs uppercase tracking-widest text-white/90 outline-none focus:border-[color:var(--oligens-gold)]/60"
+                  >
+                    <option value="juridique">Juridique &amp; Institutionnel</option>
+                    <option value="academique">Académique / Recherche</option>
+                    <option value="professionnel">Professionnel &amp; Neutre</option>
+                    <option value="creatif">Créatif &amp; Fluidité</option>
+                  </select>
+                </div>
+
                 <button
                   onClick={runHumanize}
                   disabled={humanizing}
@@ -514,7 +550,7 @@ function OligensPage() {
               title="Humanizer Report"
               hint={rapport.decision}
             />
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
               <RapportStat
                 label="Initial AI"
                 value={`${(rapport.proba_initiale * 100).toFixed(1)}%`}
@@ -533,10 +569,16 @@ function OligensPage() {
                 value={String(rapport.iterations_realisees)}
               />
               <RapportStat
-                label="Status"
-                value={
-                  rapport.proba_finale < 0.35 ? "NEUTRALIZED" : "PARTIAL"
-                }
+                label="Integrity"
+                value={`${(rapport.semanticIntegrityScore * 100).toFixed(1)}%`}
+              />
+              <RapportStat
+                label="Reverted"
+                value={String(rapport.sentencesReverted)}
+              />
+              <RapportStat
+                label="Register"
+                value={rapport.register.toUpperCase()}
               />
             </div>
             {rapport.historique.length > 0 && (
@@ -571,13 +613,10 @@ function OligensPage() {
                 title="Humanization Output"
                 hint="Semantic-preserving rewrite"
               />
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-emerald-300">
-                  Cosine Similarity ·{" "}
-                  <span className="text-emerald-200">
-                    {(humanized.similarity * 100).toFixed(1)}%
-                  </span>
-                </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <IntegrityBadge
+                  score={rapport?.semanticIntegrityScore ?? humanized.similarity}
+                />
                 <div className="rounded-lg border border-[color:var(--oligens-gold)]/40 bg-[rgba(255,215,0,0.05)] px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-[color:var(--oligens-gold)]">
                   AI Score{" "}
                   <span className="text-white/80 line-through">
@@ -591,7 +630,7 @@ function OligensPage() {
               </div>
             </div>
 
-            <div className="mb-3 flex gap-2 font-mono text-[11px] uppercase tracking-widest">
+            <div className="mb-3 flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-widest">
               <TabBtn
                 active={tab === "original"}
                 onClick={() => setTab("original")}
@@ -604,15 +643,34 @@ function OligensPage() {
               >
                 Humanized
               </TabBtn>
+              <div className="ml-auto flex items-center gap-3">
+                <HeatLegend />
+                <button
+                  onClick={() => setShowDiff((v) => !v)}
+                  className={`rounded-md border px-3 py-1.5 transition-all ${
+                    showDiff
+                      ? "border-[color:var(--oligens-gold)] bg-[rgba(255,215,0,0.08)] text-[color:var(--oligens-gold)]"
+                      : "border-white/10 text-white/60 hover:border-white/30 hover:text-white/90"
+                  }`}
+                >
+                  {showDiff ? "Diff · ON" : "Diff View"}
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <ComparePane title="Input" text={text} highlight={tab === "original"} />
+              <ComparePane
+                title="Input"
+                text={text}
+                highlight={tab === "original"}
+                heat={originalHeat}
+              />
               <ComparePane
                 title="Optimized Output"
                 text={humanized.text}
                 highlight={tab === "humanized"}
                 gold
+                heat={humanizedHeat}
                 actions={
                   <button
                     onClick={() => navigator.clipboard.writeText(humanized.text)}
@@ -623,6 +681,34 @@ function OligensPage() {
                 }
               />
             </div>
+
+            {showDiff && (
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-4">
+                <div className="mb-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.3em] text-white/60">
+                  <span>Side-by-Side Diff</span>
+                  <span className="text-white/40">
+                    <span className="text-emerald-300">+ additions</span> ·{" "}
+                    <span className="text-red-300">− removals</span>
+                  </span>
+                </div>
+                <div className="max-h-[420px] overflow-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed">
+                  {diffTokens.map((tok, i) => (
+                    <span
+                      key={i}
+                      className={
+                        tok.op === "add"
+                          ? "rounded-sm bg-emerald-500/20 text-emerald-200"
+                          : tok.op === "del"
+                            ? "rounded-sm bg-red-500/20 text-red-300 line-through"
+                            : "text-white/85"
+                      }
+                    >
+                      {tok.text}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
@@ -774,12 +860,14 @@ function ComparePane({
   text,
   highlight,
   gold,
+  heat,
   actions,
 }: {
   title: string;
   text: string;
   highlight?: boolean;
   gold?: boolean;
+  heat?: SentenceHeat[];
   actions?: React.ReactNode;
 }) {
   return (
@@ -799,8 +887,69 @@ function ComparePane({
         {actions}
       </div>
       <div className="max-h-[360px] overflow-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-white/85">
-        {text}
+        {heat && heat.length > 0
+          ? heat.map((s, i) => {
+              const cls =
+                s.score > 0.75
+                  ? "bg-red-500/25 text-red-100"
+                  : s.score >= 0.4
+                    ? "bg-yellow-400/20 text-amber-100"
+                    : "";
+              const tip =
+                `AI ${(s.score * 100).toFixed(0)}%` +
+                (s.markers.length ? ` · markers: ${s.markers.join(", ")}` : "");
+              return (
+                <span
+                  key={i}
+                  title={tip}
+                  className={`rounded-sm px-0.5 ${cls}`}
+                >
+                  {s.text}
+                  {i < heat.length - 1 ? " " : ""}
+                </span>
+              );
+            })
+          : text}
       </div>
+    </div>
+  );
+}
+
+function HeatLegend() {
+  return (
+    <div className="hidden items-center gap-2 font-mono text-[9px] uppercase tracking-[0.25em] text-white/50 md:flex">
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-3 rounded-sm bg-red-500/50" />
+        &gt;75%
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-3 rounded-sm bg-yellow-400/50" />
+        40–75%
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-3 rounded-sm border border-white/30" />
+        &lt;40%
+      </span>
+    </div>
+  );
+}
+
+function IntegrityBadge({ score }: { score: number }) {
+  const pct = score * 100;
+  const ok = score >= 0.9;
+  return (
+    <div
+      className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest ${
+        ok
+          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+          : "border-red-400/40 bg-red-500/10 text-red-200"
+      }`}
+      title="Semantic preservation (TF cosine similarity)"
+    >
+      Semantic Preservation ·{" "}
+      <span className={ok ? "text-emerald-100" : "text-red-100"}>
+        {pct.toFixed(1)}% {ok ? "✅" : "⚠"}
+      </span>
     </div>
   );
 }
