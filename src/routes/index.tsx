@@ -63,6 +63,8 @@ function OligensPage() {
   const [tab, setTab] = useState<"original" | "humanized">("original");
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [register, setRegister] = useState<Register>("professionnel");
+  const [showDiff, setShowDiff] = useState(false);
 
   useEffect(() => {
     setHistory(loadHistory());
