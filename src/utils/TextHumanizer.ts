@@ -296,6 +296,20 @@ class TextMutator {
     return HUMAN_FILLERS;
   }
 
+  private protectedTerms(): Set<string> {
+    return PROTECTED_TERMS_BY_REGISTER[this.config.register] ?? new Set();
+  }
+
+  private touchesProtected(text: string): boolean {
+    const prot = this.protectedTerms();
+    if (prot.size === 0) return false;
+    const lower = text.toLowerCase();
+    for (const t of prot) {
+      if (lower.includes(t)) return true;
+    }
+    return false;
+  }
+
   mutatePhrases(text: string, intensity: number): string {
     let result = text;
     let replaced = 0;
@@ -303,6 +317,7 @@ class TextMutator {
     const maxReplace = Math.floor(list.length * intensity * 0.6);
     for (const phrase of list) {
       if (replaced >= maxReplace) break;
+      if (this.touchesProtected(phrase)) continue;
       const regex = new RegExp(
         "\\b" + phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b",
         "gi",
