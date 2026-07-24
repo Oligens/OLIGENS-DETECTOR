@@ -3,7 +3,31 @@
 // Pure TypeScript - Aucune dépendance externe
 // ============================================================
 
-import { detect } from "@/lib/detector";
+import { cosineSimilarity, detect, splitSentences } from "@/lib/detector";
+
+export type Register = "juridique" | "academique" | "professionnel" | "creatif";
+
+// Terms whose meaning must be preserved verbatim per register.
+const PROTECTED_TERMS_BY_REGISTER: Record<Register, Set<string>> = {
+  juridique: new Set([
+    "nullité","acte","exploit","partie","parties","jugement","procédure","requête",
+    "demandeur","défendeur","tribunal","article","alinéa","clause","préjudice",
+    "obligation","contrat","contractuel","responsabilité","dommages","intérêts",
+    "arrêt","cassation","pourvoi","appel","instance","juridiction","code civil",
+    "code pénal","statut","loi","décret","ordonnance","règlement",
+  ]),
+  academique: new Set([
+    "hypothèse","méthodologie","corpus","échantillon","variable","corrélation",
+    "significatif","p-value","résultat","résultats","analyse","données",
+    "hypothesis","methodology","sample","variable","correlation","significant",
+  ]),
+  professionnel: new Set([
+    "kpi","roi","stakeholder","livrable","milestone","budget","scope",
+  ]),
+  creatif: new Set(),
+};
+
+const SENTENCE_SIMILARITY_MIN = 0.9;
 
 interface HeuristicResult {
   probabilite_IA: number;
