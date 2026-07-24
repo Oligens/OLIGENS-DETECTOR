@@ -12,7 +12,7 @@ import {
   type DetectionMetrics,
   type HumanizeResult,
 } from "@/lib/detector";
-import { TextHumanizer, type HumanizerRapport } from "@/utils/TextHumanizer";
+import { TextHumanizer, type HumanizerRapport, type Register } from "@/utils/TextHumanizer";
 import { detectLanguage, languageLabel, type SupportedLang } from "@/utils/languageDetect";
 import {
   clearHistory,
