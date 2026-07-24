@@ -21,6 +21,7 @@ import {
   deleteRecord,
   type HistoryRecord,
 } from "@/utils/historyStorage";
+import { analyzeSentences, diffWords, type SentenceHeat } from "@/utils/textForensics";
 import logoAsset from "@/assets/oligens-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
