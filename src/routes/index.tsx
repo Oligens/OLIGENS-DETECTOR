@@ -182,6 +182,9 @@ function OligensPage() {
             ? "✅ Ollama rewrite — human-style"
             : "⚠️ Ollama rewrite — threshold not reached",
         langue: lang,
+        register,
+        semanticIntegrityScore: similarity,
+        sentencesReverted: 0,
       });
       setMetrics(after);
       setTab("humanized");
