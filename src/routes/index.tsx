@@ -131,6 +131,7 @@ function OligensPage() {
       seuilCible: 0.35,
       iterationsMax: 6,
       intensite: 0.7,
+      register,
     });
     const after = detect(texteFinal);
     const similarity = cosineSimilarity(text, texteFinal);
