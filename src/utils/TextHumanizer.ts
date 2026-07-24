@@ -577,6 +577,9 @@ export interface HumanizerRapport {
   features_finales: Array<{ nom: string; z_score: number; contribution: number }>;
   decision: string;
   langue: SupportedLang;
+  register: Register;
+  semanticIntegrityScore: number; // 0..1 overall doc cosine
+  sentencesReverted: number;
 }
 
 export class TextHumanizer {
@@ -599,6 +602,7 @@ export class TextHumanizer {
       seuilCible: 0.35,
       iterationsMax: 6,
       intensite: 0.7,
+      register: "professionnel",
       ...config,
       langue,
     };
@@ -607,10 +611,15 @@ export class TextHumanizer {
     let currentText = text;
     const history: { iteration: number; proba: number; anomalies: any[] }[] = [];
     let finalIteration = 0;
+    let sentencesReverted = 0;
 
     const initialAnalysis = this.detector.analyze(currentText);
     let currentAnalysis = initialAnalysis;
     let currentProba = currentAnalysis.probabilite_IA;
+
+    // Sentence-level cosine guard: mutate each sentence independently and
+    // revert any sentence whose similarity vs the original drops below 0.90.
+    const originalSentences = splitSentences(text);
 
     for (let iter = 1; iter <= cfg.iterationsMax; iter++) {
       if (currentProba < cfg.seuilCible) {
@@ -623,8 +632,39 @@ export class TextHumanizer {
 
       history.push({ iteration: iter, proba: currentProba, anomalies: anomalies.slice(0, 3) });
 
-      const dynamicIntensity = cfg.intensite * (1 + (currentProba - cfg.seuilCible) * 0.5);
-      currentText = mutator.applyAllMutations(currentText, Math.min(1, dynamicIntensity));
+      const dynamicIntensity = Math.min(
+        1,
+        cfg.intensite * (1 + (currentProba - cfg.seuilCible) * 0.5),
+      );
+
+      const currentSentences = splitSentences(currentText);
+      // Only apply per-sentence guard when the sentence count still aligns
+      // with the original — otherwise fall back to whole-doc mutation guarded
+      // by an overall similarity threshold.
+      if (currentSentences.length === originalSentences.length) {
+        const nextSentences: string[] = [];
+        for (let i = 0; i < currentSentences.length; i++) {
+          const original = originalSentences[i];
+          const before = currentSentences[i];
+          const mutated = mutator.applyAllMutations(before, dynamicIntensity);
+          const sim = cosineSimilarity(original, mutated);
+          if (sim >= SENTENCE_SIMILARITY_MIN) {
+            nextSentences.push(mutated);
+          } else {
+            nextSentences.push(before);
+            sentencesReverted++;
+          }
+        }
+        currentText = nextSentences.join(" ");
+      } else {
+        const candidate = mutator.applyAllMutations(currentText, dynamicIntensity);
+        const overall = cosineSimilarity(text, candidate);
+        if (overall >= SENTENCE_SIMILARITY_MIN) {
+          currentText = candidate;
+        } else {
+          sentencesReverted++;
+        }
+      }
 
       currentAnalysis = this.detector.analyze(currentText);
       currentProba = currentAnalysis.probabilite_IA;
@@ -648,6 +688,8 @@ export class TextHumanizer {
       finalText += ".";
     }
 
+    const semanticIntegrityScore = cosineSimilarity(text, finalText);
+
     const rapport: HumanizerRapport = {
       proba_initiale: initialAnalysis.probabilite_IA,
       proba_finale: finalProba,
@@ -656,10 +698,15 @@ export class TextHumanizer {
       historique: history,
       features_finales: finalAnalysis.rapport_detaille,
       decision:
-        finalProba < 0.35
-          ? "✅ Texte neutralisé (style humain)"
-          : "⚠️ Seuil non atteint, révision manuelle conseillée",
+        finalProba < 0.35 && semanticIntegrityScore >= SENTENCE_SIMILARITY_MIN
+          ? "✅ Texte neutralisé — sens préservé"
+          : semanticIntegrityScore < SENTENCE_SIMILARITY_MIN
+            ? "⚠️ Dérive sémantique détectée — révision manuelle"
+            : "⚠️ Seuil non atteint, révision manuelle conseillée",
       langue,
+      register: cfg.register,
+      semanticIntegrityScore,
+      sentencesReverted,
     };
 
     return { texteFinal: finalText, rapport };
