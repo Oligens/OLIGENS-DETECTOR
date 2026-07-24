@@ -607,13 +607,10 @@ function OligensPage() {
                 title="Humanization Output"
                 hint="Semantic-preserving rewrite"
               />
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-emerald-300">
-                  Cosine Similarity ·{" "}
-                  <span className="text-emerald-200">
-                    {(humanized.similarity * 100).toFixed(1)}%
-                  </span>
-                </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <IntegrityBadge
+                  score={rapport?.semanticIntegrityScore ?? humanized.similarity}
+                />
                 <div className="rounded-lg border border-[color:var(--oligens-gold)]/40 bg-[rgba(255,215,0,0.05)] px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-[color:var(--oligens-gold)]">
                   AI Score{" "}
                   <span className="text-white/80 line-through">
@@ -627,7 +624,7 @@ function OligensPage() {
               </div>
             </div>
 
-            <div className="mb-3 flex gap-2 font-mono text-[11px] uppercase tracking-widest">
+            <div className="mb-3 flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-widest">
               <TabBtn
                 active={tab === "original"}
                 onClick={() => setTab("original")}
@@ -640,15 +637,34 @@ function OligensPage() {
               >
                 Humanized
               </TabBtn>
+              <div className="ml-auto flex items-center gap-3">
+                <HeatLegend />
+                <button
+                  onClick={() => setShowDiff((v) => !v)}
+                  className={`rounded-md border px-3 py-1.5 transition-all ${
+                    showDiff
+                      ? "border-[color:var(--oligens-gold)] bg-[rgba(255,215,0,0.08)] text-[color:var(--oligens-gold)]"
+                      : "border-white/10 text-white/60 hover:border-white/30 hover:text-white/90"
+                  }`}
+                >
+                  {showDiff ? "Diff · ON" : "Diff View"}
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <ComparePane title="Input" text={text} highlight={tab === "original"} />
+              <ComparePane
+                title="Input"
+                text={text}
+                highlight={tab === "original"}
+                heat={originalHeat}
+              />
               <ComparePane
                 title="Optimized Output"
                 text={humanized.text}
                 highlight={tab === "humanized"}
                 gold
+                heat={humanizedHeat}
                 actions={
                   <button
                     onClick={() => navigator.clipboard.writeText(humanized.text)}
@@ -659,6 +675,34 @@ function OligensPage() {
                 }
               />
             </div>
+
+            {showDiff && (
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-4">
+                <div className="mb-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.3em] text-white/60">
+                  <span>Side-by-Side Diff</span>
+                  <span className="text-white/40">
+                    <span className="text-emerald-300">+ additions</span> ·{" "}
+                    <span className="text-red-300">− removals</span>
+                  </span>
+                </div>
+                <div className="max-h-[420px] overflow-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed">
+                  {diffTokens.map((tok, i) => (
+                    <span
+                      key={i}
+                      className={
+                        tok.op === "add"
+                          ? "rounded-sm bg-emerald-500/20 text-emerald-200"
+                          : tok.op === "del"
+                            ? "rounded-sm bg-red-500/20 text-red-300 line-through"
+                            : "text-white/85"
+                      }
+                    >
+                      {tok.text}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
