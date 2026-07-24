@@ -96,6 +96,19 @@ function OligensPage() {
     return { lines, words, chars };
   }, [text]);
 
+  const originalHeat = useMemo<SentenceHeat[]>(
+    () => (metrics && text.trim() ? analyzeSentences(text) : []),
+    [metrics, text],
+  );
+  const humanizedHeat = useMemo<SentenceHeat[]>(
+    () => (humanized ? analyzeSentences(humanized.text) : []),
+    [humanized],
+  );
+  const diffTokens = useMemo(
+    () => (humanized ? diffWords(text, humanized.text) : []),
+    [text, humanized],
+  );
+
   const runAnalysis = useCallback(async () => {
     if (!text.trim()) return;
     setAnalyzing(true);
