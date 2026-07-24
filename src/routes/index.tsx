@@ -495,6 +495,22 @@ function OligensPage() {
                   </span>
                 </div>
 
+                <div className="mb-3 flex flex-col gap-1">
+                  <label className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/50">
+                    Style / Register
+                  </label>
+                  <select
+                    value={register}
+                    onChange={(e) => setRegister(e.target.value as Register)}
+                    className="w-full rounded-lg border border-white/15 bg-black/60 px-3 py-2 font-mono text-xs uppercase tracking-widest text-white/90 outline-none focus:border-[color:var(--oligens-gold)]/60"
+                  >
+                    <option value="juridique">Juridique &amp; Institutionnel</option>
+                    <option value="academique">Académique / Recherche</option>
+                    <option value="professionnel">Professionnel &amp; Neutre</option>
+                    <option value="creatif">Créatif &amp; Fluidité</option>
+                  </select>
+                </div>
+
                 <button
                   onClick={runHumanize}
                   disabled={humanizing}
