@@ -413,7 +413,7 @@ class TextMutator {
     const maxSubs = Math.floor(words.length * intensity * 0.15);
     for (const word of words) {
       const lower = word.toLowerCase().replace(/[^a-zàâçéèêëîïôûùüÿæœ-]/g, "");
-      if (SYNONYM_MAP[lower] && substituted < maxSubs && this.rng() < intensity * 0.4) {
+      if (SYNONYM_MAP[lower] && !this.protectedTerms().has(lower) && substituted < maxSubs && this.rng() < intensity * 0.4) {
         const syns = SYNONYM_MAP[lower];
         const chosen = this.pickRandom(syns);
         let replacement = chosen;
