@@ -550,7 +550,7 @@ function OligensPage() {
               title="Humanizer Report"
               hint={rapport.decision}
             />
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
               <RapportStat
                 label="Initial AI"
                 value={`${(rapport.proba_initiale * 100).toFixed(1)}%`}
@@ -569,10 +569,16 @@ function OligensPage() {
                 value={String(rapport.iterations_realisees)}
               />
               <RapportStat
-                label="Status"
-                value={
-                  rapport.proba_finale < 0.35 ? "NEUTRALIZED" : "PARTIAL"
-                }
+                label="Integrity"
+                value={`${(rapport.semanticIntegrityScore * 100).toFixed(1)}%`}
+              />
+              <RapportStat
+                label="Reverted"
+                value={String(rapport.sentencesReverted)}
+              />
+              <RapportStat
+                label="Register"
+                value={rapport.register.toUpperCase()}
               />
             </div>
             {rapport.historique.length > 0 && (
