@@ -148,7 +148,7 @@ function OligensPage() {
       language: rap.langue,
       type: "HUMANIZATION",
     });
-  }, [text, persist]);
+  }, [text, persist, register]);
 
   const runOllama = useCallback(async () => {
     if (!text.trim()) return;
