@@ -205,7 +205,7 @@ function OligensPage() {
     } finally {
       setOllamaBusy(false);
     }
-  }, [text, persist]);
+  }, [text, persist, register]);
 
   const handleFile = useCallback(async (file: File) => {
     setFileName(file.name);
