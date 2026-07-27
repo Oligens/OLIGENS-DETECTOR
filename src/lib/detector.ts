@@ -12,6 +12,7 @@ export interface DetectionMetrics {
   sentenceCount: number;
   wordCount: number;
   avgSentenceLength: number;
+  llmSignature?: string;
 }
 
 const AI_TRANSITION_MARKERS = [
@@ -194,12 +195,13 @@ export function filterContentSentences(sentences: string[]): string[] {
     if (!trimmed) return false;
     const wordCount = trimmed.split(/\s+/).length;
     const hasTerminal = /[.!?]$/.test(trimmed);
+    // Short lines are likely layout fragments or headers, exclude from variance calculation
+    if (wordCount < 5) return false;
+    
     // Numbered headings like "1.", "1)", "I.", "A." optionally followed by a short title
     if (/^([0-9]+|[IVX]+|[A-Z])[.)]\s+\S/.test(trimmed) && wordCount < 10 && !hasTerminal) {
       return false;
     }
-    // Short lines without ending punctuation are almost certainly headers
-    if (wordCount < 5 && !hasTerminal) return false;
     return true;
   });
 }
@@ -247,7 +249,56 @@ export function detect(text: string): DetectionMetrics {
     sentenceCount: sentences.length,
     wordCount: words.length,
     avgSentenceLength: avg,
+    llmSignature: determineLLMSignature(text, aiScore, variance, ngramDensity),
   };
+}
+
+function determineLLMSignature(text: string, aiScore: number, burstiness: number, ngramDensity: number): string {
+  if (aiScore < 0.4) return "None";
+  const lower = text.toLowerCase();
+  
+  // GPT-4o indicators: high formality, bullet points/numbered lists, specific transition markers
+  let gpt4Score = 0;
+  if (ngramDensity > 0.4) gpt4Score += 2;
+  const gptMarkers = ["in conclusion", "furthermore", "it is important to note", "en outre", "dans ce contexte"];
+  for (const m of gptMarkers) {
+    if (lower.includes(m)) gpt4Score += 1;
+  }
+  
+  // Claude 3.5 indicators: high burstiness (variance), organic flow with subtle academic hedging
+  let claudeScore = 0;
+  if (burstiness > 80) claudeScore += 2;
+  const claudeMarkers = ["il convient néanmoins", "en nuance", "that being said", "it is worth noting", "from a perspective"];
+  for (const m of claudeMarkers) {
+    if (lower.includes(m)) claudeScore += 1;
+  }
+  
+  // Llama-3 indicators: high rep-score, rhythmic clause balance (often lots of 'and', 'or', repetitive sentence structures)
+  let llamaScore = 0;
+  const llamaMarkers = ["delve into", "testament to", "rich tapestry", "navigating the complexities"];
+  for (const m of llamaMarkers) {
+    if (lower.includes(m)) llamaScore += 1;
+  }
+  
+  const scores = [
+    { name: "GPT-4o", score: gpt4Score },
+    { name: "Claude 3.5", score: claudeScore },
+    { name: "Llama-3", score: llamaScore },
+  ];
+  scores.sort((a, b) => b.score - a.score);
+  
+  if (scores[0].score === 0) {
+    return "Generic AI";
+  }
+  
+  const total = scores.reduce((sum, s) => sum + s.score, 0);
+  const topProb = Math.round((scores[0].score / total) * 100);
+  let sig = `${scores[0].name} (${topProb}%)`;
+  if (scores[1].score > 0) {
+    const secondProb = Math.round((scores[1].score / total) * 100);
+    sig += ` | ${scores[1].name} (${secondProb}%)`;
+  }
+  return sig;
 }
 
 

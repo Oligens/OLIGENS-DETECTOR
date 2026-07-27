@@ -22,6 +22,13 @@ import {
   type HistoryRecord,
 } from "@/utils/historyStorage";
 import { analyzeSentences, diffWords, type SentenceHeat } from "@/utils/textForensics";
+import { analyzeFactDensity, type FactDensityResult } from "@/utils/factDensityAnalyzer";
+import { detectPlagiarismAsync, type PlagiarismResult } from "@/utils/plagiarismDetector";
+import { generateAuditReport } from "@/utils/pdfGenerator";
+import { db, type UserProfile } from "@/utils/dbStorage";
+import { syncLocalDirectory } from "@/utils/localIndexer";
+import * as Popover from "@radix-ui/react-popover";
+import * as Dialog from "@radix-ui/react-dialog";
 import logoAsset from "@/assets/oligens-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
@@ -66,14 +73,48 @@ function OligensPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [register, setRegister] = useState<Register>("professionnel");
   const [showDiff, setShowDiff] = useState(false);
+  
+  const [factDensity, setFactDensity] = useState<FactDensityResult | null>(null);
+  const [plagiarism, setPlagiarism] = useState<PlagiarismResult | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  const [syncingIndex, setSyncingIndex] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+  const [localDocCount, setLocalDocCount] = useState(0);
 
   useEffect(() => {
-    setHistory(loadHistory());
+    loadHistory().then(setHistory);
+    db.users.toArray().then(users => {
+      if (users.length > 0) setUserProfile(users[0]);
+    });
+    db.localDocuments.count().then(setLocalDocCount);
   }, []);
 
-  const persist = useCallback((rec: Omit<HistoryRecord, "id" | "timestamp">) => {
-    saveRecord(rec);
-    setHistory(loadHistory());
+  const handleSyncDirectory = async () => {
+    try {
+      // @ts-ignore
+      const dirHandle = await window.showDirectoryPicker();
+      setSyncingIndex(true);
+      setSyncMsg("Scanning folder...");
+      const processed = await syncLocalDirectory(dirHandle, (msg) => setSyncMsg(msg));
+      setSyncMsg(`Sync complete! Indexed ${processed} new files.`);
+      db.localDocuments.count().then(setLocalDocCount);
+    } catch (e: any) {
+      if (e.name !== "AbortError") {
+        setSyncMsg("Error: " + e.message);
+      }
+    } finally {
+      setTimeout(() => {
+        setSyncingIndex(false);
+        setSyncMsg("");
+      }, 3000);
+    }
+  };
+
+  const persist = useCallback(async (rec: Omit<HistoryRecord, "id" | "timestamp">) => {
+    await saveRecord(rec);
+    setHistory(await loadHistory());
   }, []);
 
   // Simulated system telemetry
@@ -114,6 +155,8 @@ function OligensPage() {
     setAnalyzing(true);
     setHumanized(null);
     setMetrics(null);
+    setFactDensity(null);
+    setPlagiarism(null);
     setProgress(0);
     const chunks = chunkText(text, 4000);
     // Aggregate incrementally
@@ -125,12 +168,22 @@ function OligensPage() {
     }
     const m = detect(acc);
     setMetrics(m);
+    
+    const fd = analyzeFactDensity(acc);
+    setFactDensity(fd);
+    
+    const plag = await detectPlagiarismAsync(acc);
+    setPlagiarism(plag);
+    
     setAnalyzing(false);
     persist({
       originalText: text,
       initialScore: m.aiScore,
       language: detectLanguage(text),
       type: "DETECTION",
+      llmSignature: m.llmSignature,
+      factDensityScore: fd.factDensityIndex,
+      plagiarismScore: plag.plagiarismScore,
     });
   }, [text, persist]);
 
@@ -279,24 +332,82 @@ function OligensPage() {
             <span>System · ONLINE</span>
           </div>
         </div>
-        <button
-          onClick={() => setHistoryOpen(true)}
-          className="oligens-btn-ghost ml-3 !px-3 !py-1.5 text-[10px]"
-          title="View analysis & humanization history"
-        >
-          History · {history.length}
-        </button>
+        <div className="flex gap-2 ml-3">
+          <button
+            onClick={() => setProfileOpen(true)}
+            className="oligens-btn-ghost !px-3 !py-1.5 text-[10px]"
+            title="User Profile"
+          >
+            {userProfile ? userProfile.fullName : "Profile"}
+          </button>
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="oligens-btn-ghost !px-3 !py-1.5 text-[10px]"
+            title="View analysis & humanization history"
+          >
+            History · {history.length}
+          </button>
+        </div>
       </header>
+      
+      {/* User Profile Modal */}
+      <Dialog.Root open={profileOpen} onOpenChange={setProfileOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl glass-panel border border-white/10 p-6 shadow-2xl">
+            <Dialog.Title className="font-display text-xl font-semibold tracking-wide text-white mb-4">Profil Utilisateur</Dialog.Title>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              const profile: UserProfile = {
+                userId: userProfile?.userId || `USR-${Date.now()}`,
+                fullName: formData.get("fullName") as string,
+                role: formData.get("role") as string,
+                preferredRegister: formData.get("preferredRegister") as Register,
+                createdAt: userProfile?.createdAt || Date.now(),
+              };
+              await db.users.put(profile);
+              setUserProfile(profile);
+              setRegister(profile.preferredRegister);
+              setProfileOpen(false);
+            }}>
+              <div className="space-y-4 font-mono text-[11px] uppercase tracking-widest text-white/70">
+                <div>
+                  <label className="block mb-1">Nom Complet</label>
+                  <input name="fullName" defaultValue={userProfile?.fullName || ""} required className="w-full rounded-lg border border-white/15 bg-black/60 px-3 py-2 text-white/90 outline-none focus:border-[color:var(--oligens-gold)]/60" />
+                </div>
+                <div>
+                  <label className="block mb-1">Rôle / Profession</label>
+                  <input name="role" defaultValue={userProfile?.role || ""} placeholder="e.g. Avocat / Juriste" required className="w-full rounded-lg border border-white/15 bg-black/60 px-3 py-2 text-white/90 outline-none focus:border-[color:var(--oligens-gold)]/60" />
+                </div>
+                <div>
+                  <label className="block mb-1">Registre Préféré</label>
+                  <select name="preferredRegister" defaultValue={userProfile?.preferredRegister || "professionnel"} className="w-full rounded-lg border border-white/15 bg-black/60 px-3 py-2 text-white/90 outline-none focus:border-[color:var(--oligens-gold)]/60">
+                    <option value="juridique">Juridique & Institutionnel</option>
+                    <option value="academique">Académique / Recherche</option>
+                    <option value="professionnel">Professionnel & Neutre</option>
+                    <option value="creatif">Créatif & Fluidité</option>
+                  </select>
+                </div>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button type="button" onClick={() => setProfileOpen(false)} className="oligens-btn-ghost">Annuler</button>
+                  <button type="submit" className="oligens-btn-primary">Sauvegarder</button>
+                </div>
+              </div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <HistoryDrawer
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         items={history}
-        onClear={() => {
-          clearHistory();
+        onClear={async () => {
+          await clearHistory();
           setHistory([]);
         }}
-        onDelete={(id) => setHistory(deleteRecord(id))}
+        onDelete={async (id) => setHistory(await deleteRecord(id))}
         onReload={(rec) => {
           setText(rec.originalText);
           setMetrics(null);
@@ -319,6 +430,72 @@ function OligensPage() {
             n-gram density — followed by semantic-preserving humanization.
           </p>
         </section>
+
+        {/* Local Indexing Card */}
+        <section className="mb-6 glass-panel rounded-2xl p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <SectionHeader
+              index="L"
+              title="Indexation Locale (Offline)"
+              hint={localDocCount > 0 ? `${localDocCount} documents indexés` : "Aucun dossier connecté"}
+            />
+            <p className="text-xs text-white/50 max-w-lg font-mono leading-relaxed mt-[-10px]">
+              Associez un dossier local de votre institution (PDF, DOCX, TXT). Les fichiers sont analysés localement et 100% hors-ligne.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 min-w-[250px]">
+            <button 
+              onClick={handleSyncDirectory}
+              disabled={syncingIndex}
+              className="oligens-btn-primary !py-2 w-full flex justify-center items-center gap-2"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              {syncingIndex ? "Synchronisation..." : (localDocCount > 0 ? "Resynchroniser l'index" : "Connecter un dossier")}
+            </button>
+            <button 
+              onClick={() => setInfoModalOpen(true)}
+              className="oligens-btn-ghost !py-2 w-full"
+            >
+              En savoir plus sur la confidentialité
+            </button>
+            {syncMsg && <div className="text-[10px] text-white/60 font-mono text-center uppercase tracking-widest">{syncMsg}</div>}
+          </div>
+        </section>
+
+        {/* Info Modal */}
+        <Dialog.Root open={infoModalOpen} onOpenChange={setInfoModalOpen}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm" />
+            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl glass-panel border border-[color:var(--oligens-gold)]/30 p-6 shadow-2xl">
+              <Dialog.Title className="font-display text-xl font-semibold tracking-wide text-[color:var(--oligens-gold)] mb-4 flex items-center gap-2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                Confidentialité 100% Locale
+              </Dialog.Title>
+              <div className="space-y-4 text-sm text-white/80 leading-relaxed font-mono">
+                <p>
+                  L'Indexation Locale vous permet de créer une base de données de recherche (Cross-Check) privée en utilisant l'API <strong>File System Access</strong> de votre navigateur.
+                </p>
+                <div className="rounded-lg border border-white/10 bg-black/40 p-3 space-y-2">
+                  <h3 className="text-white font-semibold">Comment ça marche ?</h3>
+                  <ol className="list-decimal pl-4 space-y-1 text-white/60">
+                    <li>Regroupez vos documents institutionnels (PDF, DOCX, TXT) dans un dossier sur votre disque dur.</li>
+                    <li>Cliquez sur "Connecter un dossier" et autorisez l'accès en lecture.</li>
+                    <li>Oligens Detector analyse les fichiers <strong>localement</strong> et génère des empreintes n-grammes (hachages) stockées dans la base de données interne du navigateur (IndexedDB).</li>
+                  </ol>
+                </div>
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-200">
+                  <h3 className="font-semibold text-emerald-400 mb-1">Garantie de Confidentialité Zéro-Transfert</h3>
+                  <p className="text-xs">
+                    Aucun fichier, texte ou empreinte ne quitte votre ordinateur. Le traitement est 100% hors-ligne. Les serveurs externes (incluant l'API Crossref) ne sont interrogés qu'avec des métadonnées publiques de citations, jamais avec le contenu de vos documents locaux.
+                  </p>
+                </div>
+                <div className="pt-2 flex justify-end">
+                  <button onClick={() => setInfoModalOpen(false)} className="oligens-btn-primary">Compris</button>
+                </div>
+              </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
 
         <div className="grid gap-5 lg:grid-cols-2">
           {/* Card 1 — Input */}
@@ -485,6 +662,31 @@ function OligensPage() {
                   </div>
                 </div>
 
+                <div className="mb-4 grid gap-4 md:grid-cols-3">
+                  <div className="rounded-xl border border-[color:var(--oligens-gold)]/40 bg-black/30 p-4">
+                    <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-[color:var(--oligens-gold)]">LLM Profile Signature</div>
+                    <div className="font-mono text-sm text-white/90">{metrics.llmSignature || "None"}</div>
+                  </div>
+                  {factDensity && (
+                    <div className={`rounded-xl border p-4 ${factDensity.status === 'High Substance' ? 'border-emerald-500/40 bg-emerald-500/10' : factDensity.status === 'AI Fluff' ? 'border-red-500/40 bg-red-500/10' : 'border-white/10 bg-black/30'}`}>
+                      <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-white/50">
+                        <span>Fact Density</span>
+                        <span className={factDensity.status === 'High Substance' ? 'text-emerald-400' : factDensity.status === 'AI Fluff' ? 'text-red-400' : 'text-amber-400'}>{factDensity.status}</span>
+                      </div>
+                      <div className="font-mono text-sm text-white/90">{factDensity.factDensityIndex.toFixed(1)}% <span className="text-white/40 text-[10px]">({factDensity.entitiesFound} entities)</span></div>
+                    </div>
+                  )}
+                  {plagiarism && (
+                    <div className={`rounded-xl border p-4 ${plagiarism.plagiarismScore > 0 ? 'border-purple-500/40 bg-purple-500/10' : 'border-emerald-500/40 bg-emerald-500/10'}`}>
+                      <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-white/50">
+                        <span>Citation Audit</span>
+                        <span className={plagiarism.plagiarismScore > 0 ? 'text-purple-400' : 'text-emerald-400'}>{plagiarism.plagiarismScore > 0 ? 'Claims Flagged' : 'All Clear'}</span>
+                      </div>
+                      <div className="font-mono text-sm text-white/90">{plagiarism.plagiarismScore.toFixed(1)}% Flagged</div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="mb-4 rounded-xl border border-white/10 bg-black/30 p-4 font-mono text-[11px] leading-relaxed text-white/70">
                   <span className="text-[color:var(--oligens-gold)]">
                     S_IA(T) ={" "}
@@ -511,18 +713,40 @@ function OligensPage() {
                   </select>
                 </div>
 
-                <button
-                  onClick={runHumanize}
-                  disabled={humanizing}
-                  className="oligens-btn-primary w-full"
-                >
-                  <span className="relative z-10 flex items-center justify-center gap-2">
-                    <SparkIcon />
-                    {humanizing
-                      ? "HUMANIZING…"
-                      : "HUMANIZE TEXT (OPTIMIZATION)"}
-                  </span>
-                </button>
+                <div className="mt-4 flex flex-col gap-2">
+                  <button
+                    onClick={runHumanize}
+                    disabled={humanizing}
+                    className="oligens-btn-primary w-full"
+                  >
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      <SparkIcon />
+                      {humanizing
+                        ? "HUMANIZING…"
+                        : "HUMANIZE TEXT (OPTIMIZATION)"}
+                    </span>
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!metrics) return;
+                      await generateAuditReport({
+                        documentTitle: fileName || "Untitled",
+                        userName: userProfile?.fullName || "Anonymous",
+                        userRole: userProfile?.role || "User",
+                        originalText: text,
+                        initialMetrics: metrics,
+                        finalMetrics: humanized?.after,
+                        semanticScore: humanized?.similarity,
+                        factDensity: factDensity || undefined,
+                        plagiarism: plagiarism || undefined,
+                        llmSignature: metrics.llmSignature || "None"
+                      });
+                    }}
+                    className="oligens-btn-ghost w-full border border-[color:var(--oligens-gold)]/40 text-[color:var(--oligens-gold)]"
+                  >
+                    EXPORT OFFICIAL AUDIT REPORT (PDF)
+                  </button>
+                </div>
                 <button
                   onClick={runOllama}
                   disabled={ollamaBusy || !text.trim()}
@@ -664,6 +888,20 @@ function OligensPage() {
                 text={text}
                 highlight={tab === "original"}
                 heat={originalHeat}
+                actions={{
+                  onReplaceSentence: (oldText: string, newText: string) => {
+                    setText(t => t.replace(oldText, newText));
+                  },
+                  onAddCitation: (oldText: string, sourceOverride?: string) => {
+                    setText(t => {
+                      const newT = t.replace(oldText, oldText + " [1]");
+                      if (!newT.includes("[1] Source:")) {
+                        return newT + `\n\n[1] Source: ${sourceOverride || "Suggested Citation, 2026."}`;
+                      }
+                      return newT;
+                    });
+                  }
+                } as any}
               />
               <ComparePane
                 title="Optimized Output"
@@ -672,12 +910,14 @@ function OligensPage() {
                 gold
                 heat={humanizedHeat}
                 actions={
-                  <button
-                    onClick={() => navigator.clipboard.writeText(humanized.text)}
-                    className="oligens-btn-ghost !py-1 !px-3 text-[10px]"
-                  >
-                    Copy
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(humanized.text)}
+                      className="oligens-btn-ghost !py-1 !px-3 text-[10px]"
+                    >
+                      Copy
+                    </button>
+                  </div>
                 }
               />
             </div>
@@ -889,24 +1129,92 @@ function ComparePane({
       <div className="max-h-[360px] overflow-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-white/85">
         {heat && heat.length > 0
           ? heat.map((s, i) => {
-              const cls =
-                s.score > 0.75
-                  ? "bg-red-500/25 text-red-100"
-                  : s.score >= 0.4
-                    ? "bg-yellow-400/20 text-amber-100"
-                    : "";
+              let cls = "";
+              let borderCls = "";
+              
+              if (s.score > 0.75) {
+                cls = "bg-red-500/25 text-red-100";
+              } else if (s.score >= 0.4) {
+                cls = "bg-yellow-400/20 text-amber-100";
+              }
+
+              // Overwrite with plagiarism highlighting if applicable
+              const plagData = plagiarism?.sentences.find(ps => ps.text === s.text);
+              if (plagData?.citationStatus === "PLAGIARISM") {
+                cls = "bg-purple-500/30 text-purple-200 border-b-2 border-purple-400";
+                borderCls = "ring-purple-400";
+              } else if (plagData?.citationStatus === "Properly Cited (Footnote)") {
+                cls = "bg-emerald-500/20 text-emerald-100 border-b-2 border-emerald-400";
+                borderCls = "ring-emerald-400";
+              }
+              
               const tip =
                 `AI ${(s.score * 100).toFixed(0)}%` +
-                (s.markers.length ? ` · markers: ${s.markers.join(", ")}` : "");
+                (s.markers.length ? ` · markers: ${s.markers.join(", ")}` : "") + 
+                (plagData?.localSource ? ` · Local DB: ${plagData.localSource}` : "");
+                
               return (
-                <span
-                  key={i}
-                  title={tip}
-                  className={`rounded-sm px-0.5 ${cls}`}
-                >
-                  {s.text}
-                  {i < heat.length - 1 ? " " : ""}
-                </span>
+                <Popover.Root key={i}>
+                  <Popover.Trigger asChild>
+                    <span
+                      title={tip}
+                      className={`rounded-sm px-0.5 cursor-pointer hover:ring-1 hover:ring-[color:var(--oligens-gold)] transition-all ${cls} ${borderCls}`}
+                    >
+                      {s.text}
+                      {i < heat.length - 1 ? " " : ""}
+                    </span>
+                  </Popover.Trigger>
+                  <Popover.Portal>
+                    <Popover.Content className="z-50 w-72 rounded-xl border border-white/15 bg-[#0a0a0f] p-4 shadow-2xl" sideOffset={5}>
+                      <div className="mb-3 flex justify-between items-center font-mono text-[10px] uppercase tracking-widest text-white/50">
+                        <span>Micro-Humanization</span>
+                        <span>AI {(s.score * 100).toFixed(0)}%</span>
+                      </div>
+                      
+                      {plagData?.suggestedSource && (
+                        <div className="mb-3 rounded-lg border border-purple-500/40 bg-purple-500/10 p-2 text-[10px] font-mono text-purple-200">
+                          <span className="block mb-1 text-purple-400 uppercase tracking-widest">Source suggérée (Crossref) :</span>
+                          {plagData.suggestedSource}
+                          <button 
+                            onClick={() => actions && (actions as any).onAddCitation && (actions as any).onAddCitation(s.text, plagData.suggestedSource)}
+                            className="mt-1 block w-full text-center rounded bg-purple-500/20 hover:bg-purple-500/40 py-1 transition-colors"
+                          >
+                            Insérer Citation APA
+                          </button>
+                        </div>
+                      )}
+                      <div className="space-y-2 font-mono text-[11px]">
+                        <button 
+                          onClick={() => actions && (actions as any).onReplaceSentence && (actions as any).onReplaceSentence(s.text, `(Formal) ${s.text}`)}
+                          className="w-full text-left rounded bg-white/5 p-2 hover:bg-white/10 hover:text-[color:var(--oligens-gold)] transition-colors"
+                        >
+                          Formal Rewrite
+                        </button>
+                        <button 
+                          onClick={() => actions && (actions as any).onReplaceSentence && (actions as any).onReplaceSentence(s.text, `(Concise) ${s.text}`)}
+                          className="w-full text-left rounded bg-white/5 p-2 hover:bg-white/10 hover:text-[color:var(--oligens-gold)] transition-colors"
+                        >
+                          Concise Rewrite
+                        </button>
+                        <button 
+                          onClick={() => actions && (actions as any).onReplaceSentence && (actions as any).onReplaceSentence(s.text, `(Casual) ${s.text}`)}
+                          className="w-full text-left rounded bg-white/5 p-2 hover:bg-white/10 hover:text-[color:var(--oligens-gold)] transition-colors"
+                        >
+                          Conversational Rewrite
+                        </button>
+                        {s.score > 0.4 && (
+                          <button 
+                            onClick={() => actions && (actions as any).onAddCitation && (actions as any).onAddCitation(s.text)}
+                            className="mt-2 w-full text-left rounded border border-purple-500/40 bg-purple-500/10 p-2 text-purple-300 hover:bg-purple-500/20 transition-colors"
+                          >
+                            + Add Footnote Citation
+                          </button>
+                        )}
+                      </div>
+                      <Popover.Arrow className="fill-[#0a0a0f]" />
+                    </Popover.Content>
+                  </Popover.Portal>
+                </Popover.Root>
               );
             })
           : text}
