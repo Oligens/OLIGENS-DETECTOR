@@ -12,4 +12,6 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Meta helps Nitro/Vite build plugins avoid missing meta errors on some platforms
+  meta: {},
 });

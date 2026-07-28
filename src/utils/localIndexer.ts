@@ -17,7 +17,7 @@ export function generateNgrams(text: string, n: number = 5): string[] {
 }
 
 // Extract text from File object based on extension
-async function extractTextFromFile(file: File): Promise<string> {
+export async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase();
 
   if (ext === "txt") {
@@ -58,7 +58,23 @@ async function extractTextFromFile(file: File): Promise<string> {
     }
   }
 
-  return "";
+  if (ext === "xlsx") {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const XLSX = await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.mjs");
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) return "";
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      return csv;
+    } catch (e) {
+      console.error(`Failed to parse XLSX ${file.name}:`, e);
+      return "";
+    }
+  }
+
+  return await file.text();
 }
 
 // Recursively traverse directory and process valid files

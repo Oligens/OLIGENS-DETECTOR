@@ -1,30 +1,31 @@
 interface Props {
-  label: string;
   value: number; // 0..1
-  raw?: string;
-  inverted?: boolean; // when true, high raw value = human (green)
+  accent?: "gold" | "cyan";
+  hideLabel?: boolean;
+  label?: string;
 }
 
-export function MetricBar({ label, value, raw, inverted }: Props) {
+export function MetricBar({ value, accent = "gold", hideLabel, label }: Props) {
   const pct = Math.max(0, Math.min(1, value));
-  const humanLean = inverted ? pct : 1 - pct;
-  const color =
-    humanLean > 0.65 ? "#7CFFB2" : humanLean > 0.35 ? "#FFD700" : "#ff4d6d";
+  const color = accent === "gold" ? "#FFB800" : "#00F0FF";
   return (
-    <div>
-      <div className="mb-1 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.2em]">
-        <span className="text-white/70">{label}</span>
-        <span className="text-white/90" style={{ color }}>
-          {raw ?? (pct * 100).toFixed(1) + "%"}
-        </span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+    <div className="space-y-2">
+      {!hideLabel ? (
+        <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.35em] text-white/50">
+          <span>{label ?? `${Math.round(pct * 100)}%`}</span>
+          <span>{pct > 0.8 ? "Élevé" : pct > 0.5 ? "Moyen" : "Bas"}</span>
+        </div>
+      ) : null}
+      <div className="h-3 overflow-hidden rounded-full bg-white/10">
         <div
           className="h-full rounded-full transition-all duration-700"
           style={{
-            width: `${pct * 100}%`,
-            background: `linear-gradient(90deg, ${color}, #D4AF37)`,
-            boxShadow: `0 0 10px ${color}80`,
+            width: `${Math.round(pct * 100)}%`,
+            background:
+              accent === "gold"
+                ? "linear-gradient(90deg, #FFB800, #FFD55A)"
+                : "linear-gradient(90deg, #00F0FF, #43E9FF)",
+            boxShadow: `0 0 12px ${color}66`,
           }}
         />
       </div>

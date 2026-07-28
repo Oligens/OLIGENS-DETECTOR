@@ -1,35 +1,18 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import mammoth from "mammoth";
-import { MatrixRain } from "@/components/MatrixRain";
-import { CircularGauge } from "@/components/CircularGauge";
-import { MetricBar } from "@/components/MetricBar";
-import { SoundWave } from "@/components/SoundWave";
-import {
-  chunkText,
-  cosineSimilarity,
-  detect,
-  type DetectionMetrics,
-  type HumanizeResult,
-} from "@/lib/detector";
+﻿import { Link, createFileRoute } from "@tanstack/react-router";
+import { useMemo, useRef, useState } from "react";
+
+import { detect, splitSentences, type DetectionMetrics } from "@/lib/detector";
 import { TextHumanizer, type HumanizerRapport, type Register } from "@/utils/TextHumanizer";
-import { detectLanguage, languageLabel, type SupportedLang } from "@/utils/languageDetect";
-import {
-  clearHistory,
-  loadHistory,
-  saveRecord,
-  deleteRecord,
-  type HistoryRecord,
-} from "@/utils/historyStorage";
-import { analyzeSentences, diffWords, type SentenceHeat } from "@/utils/textForensics";
-import { analyzeFactDensity, type FactDensityResult } from "@/utils/factDensityAnalyzer";
-import { detectPlagiarismAsync, type PlagiarismResult } from "@/utils/plagiarismDetector";
 import { generateAuditReport } from "@/utils/pdfGenerator";
-import { db, type UserProfile } from "@/utils/dbStorage";
-import { syncLocalDirectory } from "@/utils/localIndexer";
-import * as Popover from "@radix-ui/react-popover";
-import * as Dialog from "@radix-ui/react-dialog";
-import logoAsset from "@/assets/oligens-logo.png.asset.json";
+import { extractTextFromFile, syncLocalDirectory } from "@/utils/localIndexer";
+import { ActionButton } from "@/components/ActionButton";
+import { SidebarButton } from "@/components/SidebarButton";
+import { TabButton } from "@/components/TabButton";
+import { BIStatusBlock } from "@/components/BIStatusBlock";
+import { HeatmapText, type HeatmapSegment } from "@/components/HeatmapText";
+import { MetricBar } from "@/components/MetricBar";
+import { PrivacyInfoModal } from "@/components/PrivacyInfoModal";
+import { HumanizationInfoModal } from "@/components/HumanizationInfoModal";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -38,1408 +21,482 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Detect AI-generated text with perplexity, burstiness and n-gram analysis, then humanize it while preserving semantic meaning.",
-      },
-      { property: "og:title", content: "Oligens Detector — Quantum AI Text Analysis" },
-      {
-        property: "og:description",
-        content:
-          "Detect AI-generated text with perplexity, burstiness and n-gram analysis, then humanize it while preserving semantic meaning.",
+          "Detect AI-generated text with luxury sci-fi UI, heatmap overlay, perplexity and plagiarism metrics.",
       },
     ],
   }),
-  component: OligensPage,
+  component: OligensDetectorPage,
 });
 
-const SAMPLE = `In conclusion, artificial intelligence is transforming the modern landscape of technology. Furthermore, it is important to note that machine learning models have demonstrated significant capabilities. Moreover, these systems leverage vast datasets to deliver a plethora of insights. Additionally, they utilize sophisticated algorithms to navigate the complex realm of natural language processing. Consequently, organizations are increasingly adopting these technologies. Therefore, understanding their underlying mechanisms becomes essential.`;
+const HUMANIZATION_MODES = [
+  { value: "academique", label: "Académique" },
+  { value: "juridique", label: "Juridique" },
+  { value: "professionnel", label: "Professionnel" },
+  { value: "creatif", label: "Créatif" },
+];
 
-function OligensPage() {
-  const [text, setText] = useState<string>("");
-  const [analyzing, setAnalyzing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [metrics, setMetrics] = useState<DetectionMetrics | null>(null);
-  const [humanized, setHumanized] = useState<HumanizeResult | null>(null);
-  const [humanizing, setHumanizing] = useState(false);
-  const [rapport, setRapport] = useState<HumanizerRapport | null>(null);
-  const [ollamaBusy, setOllamaBusy] = useState(false);
-  const [ollamaError, setOllamaError] = useState<string | null>(null);
-  const [cpu, setCpu] = useState(23);
-  const [ram, setRam] = useState(41);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [tab, setTab] = useState<"original" | "humanized">("original");
-  const [history, setHistory] = useState<HistoryRecord[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [register, setRegister] = useState<Register>("professionnel");
-  const [showDiff, setShowDiff] = useState(false);
-  
-  const [factDensity, setFactDensity] = useState<FactDensityResult | null>(null);
-  const [plagiarism, setPlagiarism] = useState<PlagiarismResult | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [infoModalOpen, setInfoModalOpen] = useState(false);
-  const [syncingIndex, setSyncingIndex] = useState(false);
-  const [syncMsg, setSyncMsg] = useState("");
-  const [localDocCount, setLocalDocCount] = useState(0);
+const PLAGIARISM_SOURCES = [
+  {
+    label: "quantum-linguistics.net",
+    url: "https://quantum-linguistics.net/whitepaper/ai-syntax",
+  },
+  {
+    label: "orbital-ethics.org",
+    url: "https://orbital-ethics.org/reports/2025/similarity-analysis",
+  },
+  {
+    label: "research.ai-systems",
+    url: "https://research.ai-systems/privacy/traceability",
+  },
+];
 
-  useEffect(() => {
-    loadHistory().then(setHistory);
-    db.users.toArray().then(users => {
-      if (users.length > 0) setUserProfile(users[0]);
-    });
-    db.localDocuments.count().then(setLocalDocCount);
-  }, []);
+function OligensDetectorPage() {
+  const [text, setText] = useState("");
+  const [mode, setMode] = useState("professionnel");
+  const [analysisResult, setAnalysisResult] = useState<DetectionMetrics | null>(null);
+  const [activeTab, setActiveTab] = useState<"editor" | "heatmap">("editor");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isHumanizing, setIsHumanizing] = useState(false);
+  const [humanizeReport, setHumanizeReport] = useState<HumanizerRapport | null>(null);
+  const [systemStatus, setSystemStatus] = useState("OPÉRATIONNEL");
+  const [wordLimit] = useState(2000);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [humanizationOpen, setHumanizationOpen] = useState(false);
+  const [localFolderName, setLocalFolderName] = useState<string | null>(null);
+  const [localSyncMessage, setLocalSyncMessage] = useState("Aucun dossier local indexé.");
+  const [connectedFolder, setConnectedFolder] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const humanizer = useMemo(() => new TextHumanizer(), []);
 
-  const handleSyncDirectory = async () => {
-    try {
-      // @ts-ignore
-      const dirHandle = await window.showDirectoryPicker();
-      setSyncingIndex(true);
-      setSyncMsg("Scanning folder...");
-      const processed = await syncLocalDirectory(dirHandle, (msg) => setSyncMsg(msg));
-      setSyncMsg(`Sync complete! Indexed ${processed} new files.`);
-      db.localDocuments.count().then(setLocalDocCount);
-    } catch (e: any) {
-      if (e.name !== "AbortError") {
-        setSyncMsg("Error: " + e.message);
-      }
-    } finally {
-      setTimeout(() => {
-        setSyncingIndex(false);
-        setSyncMsg("");
-      }, 3000);
-    }
-  };
-
-  const persist = useCallback(async (rec: Omit<HistoryRecord, "id" | "timestamp">) => {
-    await saveRecord(rec);
-    setHistory(await loadHistory());
-  }, []);
-
-  // Simulated system telemetry
-  useEffect(() => {
-    const id = setInterval(() => {
-      setCpu((c) =>
-        Math.max(8, Math.min(94, c + (Math.random() - 0.5) * 14)),
-      );
-      setRam((r) =>
-        Math.max(18, Math.min(88, r + (Math.random() - 0.5) * 8)),
-      );
-    }, 900);
-    return () => clearInterval(id);
-  }, []);
+  const globalScore = analysisResult?.aiScore ?? 0;
+  const burstiness = analysisResult?.burstinessNorm ?? 0;
+  const perplexity = analysisResult?.perplexityNorm ?? 0;
+  const plagiarismScore = analysisResult?.ngramDensity ?? 0;
+  const signature = analysisResult?.llmSignature ?? "Aucune signature détectée";
 
   const stats = useMemo(() => {
-    const lines = text.split(/\n/).length;
     const words = text.trim() ? text.trim().split(/\s+/).length : 0;
     const chars = text.length;
-    return { lines, words, chars };
+    const lines = text.split(/\n/).length;
+    return { words, chars, lines };
   }, [text]);
 
-  const originalHeat = useMemo<SentenceHeat[]>(
-    () => (metrics && text.trim() ? analyzeSentences(text) : []),
-    [metrics, text],
-  );
-  const humanizedHeat = useMemo<SentenceHeat[]>(
-    () => (humanized ? analyzeSentences(humanized.text) : []),
-    [humanized],
-  );
-  const diffTokens = useMemo(
-    () => (humanized ? diffWords(text, humanized.text) : []),
-    [text, humanized],
-  );
+  const heatmapSegments = useMemo(() => {
+    const sentences = splitSentences(text);
 
-  const runAnalysis = useCallback(async () => {
-    if (!text.trim()) return;
-    setAnalyzing(true);
-    setHumanized(null);
-    setMetrics(null);
-    setFactDensity(null);
-    setPlagiarism(null);
-    setProgress(0);
-    const chunks = chunkText(text, 4000);
-    // Aggregate incrementally
-    let acc = "";
-    for (let i = 0; i < chunks.length; i++) {
-      acc += (acc ? " " : "") + chunks[i];
-      await new Promise((r) => setTimeout(r, 260));
-      setProgress(((i + 1) / chunks.length) * 100);
-    }
-    const m = detect(acc);
-    setMetrics(m);
-    
-    const fd = analyzeFactDensity(acc);
-    setFactDensity(fd);
-    
-    const plag = await detectPlagiarismAsync(acc);
-    setPlagiarism(plag);
-    
-    setAnalyzing(false);
-    persist({
-      originalText: text,
-      initialScore: m.aiScore,
-      language: detectLanguage(text),
-      type: "DETECTION",
-      llmSignature: m.llmSignature,
-      factDensityScore: fd.factDensityIndex,
-      plagiarismScore: plag.plagiarismScore,
+    return sentences.map((sentence, index): HeatmapSegment => {
+      const sentenceMetrics = detect(sentence);
+      const score = sentenceMetrics.aiScore;
+      return {
+        id: `${index}-${score.toFixed(2)}`,
+        text: sentence,
+        score,
+        variant: score > 0.65 ? "ai" : score > 0.4 ? "mixed" : "human",
+      };
     });
-  }, [text, persist]);
+  }, [text]);
 
-  const runHumanize = useCallback(async () => {
+  const handleAnalyze = async () => {
     if (!text.trim()) return;
-    setHumanizing(true);
-    setOllamaError(null);
-    await new Promise((r) => setTimeout(r, 300));
-    const before = detect(text);
-    const humanizer = new TextHumanizer();
-    const { texteFinal, rapport: rap } = humanizer.humanize(text, {
-      seuilCible: 0.35,
-      iterationsMax: 6,
-      intensite: 0.7,
-      register,
-    });
-    const after = detect(texteFinal);
-    const similarity = cosineSimilarity(text, texteFinal);
-    setHumanized({ text: texteFinal, similarity, before, after });
-    setRapport(rap);
-    setMetrics(after);
-    setTab("humanized");
-    setHumanizing(false);
-    persist({
-      originalText: text,
-      humanizedText: texteFinal,
-      initialScore: before.aiScore,
-      finalScore: after.aiScore,
-      language: rap.langue,
-      type: "HUMANIZATION",
-    });
-  }, [text, persist, register]);
+    setIsAnalyzing(true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const result = detect(text);
+    setAnalysisResult(result);
+    setHumanizeReport(null);
+    setActiveTab("heatmap");
+    setIsAnalyzing(false);
+  };
 
-  const runOllama = useCallback(async () => {
+  const handleHumanize = async () => {
     if (!text.trim()) return;
-    setOllamaBusy(true);
-    setOllamaError(null);
+    setIsHumanizing(true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const { texteFinal, rapport } = humanizer.humanize(text, {
+      register: mode as Register,
+    });
+    setText(texteFinal);
+    setHumanizeReport(rapport);
+    setAnalysisResult(detect(texteFinal));
+    setIsHumanizing(false);
+    setActiveTab("editor");
+  };
+
+  const handleClear = () => {
+    setText("");
+    setAnalysisResult(null);
+    setHumanizeReport(null);
+    setActiveTab("editor");
+    setConnectedFolder(null);
+    setLocalSyncMessage("Aucun dossier local indexé.");
+  };
+
+  const handleFileDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    const extractedText = await extractTextFromFile(file);
+    setText(extractedText);
+    setAnalysisResult(null);
+    setActiveTab("editor");
+  };
+
+  const handleFolderConnect = async () => {
     try {
-      const prompt = `Rewrite the following text to sound naturally human-written. Preserve meaning, structure and language. Vary sentence length, use contractions and casual transitions, avoid AI clichés ("in conclusion", "furthermore", "delve into", "tapestry", "landscape of"). Return ONLY the rewritten text.\n\nTEXT:\n${text}`;
-      const res = await fetch("http://localhost:11434/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "llama3.2:3b", prompt, stream: false }),
-      });
-      if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
-      const data = (await res.json()) as { response?: string };
-      const rewritten = (data.response || "").trim();
-      if (!rewritten) throw new Error("Empty response from Ollama");
-      const before = detect(text);
-      const after = detect(rewritten);
-      const similarity = cosineSimilarity(text, rewritten);
-      const lang = detectLanguage(text);
-      setHumanized({ text: rewritten, similarity, before, after });
-      setRapport({
-        proba_initiale: before.aiScore,
-        proba_finale: after.aiScore,
-        reduction_pourcent: (before.aiScore - after.aiScore) * 100,
-        iterations_realisees: 1,
-        historique: [],
-        features_finales: [],
-        decision:
-          after.aiScore < 0.35
-            ? "✅ Ollama rewrite — human-style"
-            : "⚠️ Ollama rewrite — threshold not reached",
-        langue: lang,
-        register,
-        semanticIntegrityScore: similarity,
-        sentencesReverted: 0,
-      });
-      setMetrics(after);
-      setTab("humanized");
-      persist({
-        originalText: text,
-        humanizedText: rewritten,
-        initialScore: before.aiScore,
-        finalScore: after.aiScore,
-        language: lang,
-        type: "HUMANIZATION",
-      });
-    } catch (e) {
-      setOllamaError(
-        e instanceof Error
-          ? `${e.message} — is Ollama running on localhost:11434 with llama3.2:3b?`
-          : "Ollama call failed",
-      );
-    } finally {
-      setOllamaBusy(false);
+      const directoryHandle = await (window as any).showDirectoryPicker();
+      const folderName = directoryHandle.name;
+      setConnectedFolder(folderName);
+      setLocalSyncMessage(`Dossier local connecté : ${folderName}`);
+      await syncLocalDirectory(directoryHandle, setLocalSyncMessage);
+    } catch (error) {
+      console.warn("Dossier local non connecté", error);
+      setLocalSyncMessage("Connexion de dossier local annulée ou non supportée.");
     }
-  }, [text, persist, register]);
+  };
 
-  const handleFile = useCallback(async (file: File) => {
-    setFileName(file.name);
-    const lower = file.name.toLowerCase();
-    if (lower.endsWith(".docx")) {
-      const buf = await file.arrayBuffer();
-      const { value } = await mammoth.extractRawText({ arrayBuffer: buf });
-      setText(value);
-    } else if (lower.endsWith(".txt") || lower.endsWith(".md")) {
-      setText(await file.text());
-    } else {
-      // Best-effort text read
-      setText(await file.text());
-    }
-  }, []);
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) void handleFile(f);
+  const handleExportReport = async () => {
+    if (!analysisResult) return;
+    await generateAuditReport({
+      documentTitle: "Oligens Detector Report",
+      userName: "Utilisateur Anonyme",
+      userRole: "Freemium",
+      originalText: text,
+      initialMetrics: analysisResult,
+      llmSignature: analysisResult.llmSignature || "Aucune signature détectée",
+    });
   };
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[#050508] text-white">
-      <MatrixRain />
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_50%_-10%,rgba(212,175,55,0.15),transparent_60%),radial-gradient(circle_at_80%_100%,rgba(120,200,220,0.08),transparent_60%)]" />
+    <div className="relative min-h-screen overflow-hidden bg-[#05070B] text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(0,240,255,0.12),transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(255,184,0,0.11),transparent_28%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-grid-lines opacity-40" />
 
-      {/* Top bar */}
-      <header className="glass-panel sticky top-3 z-30 mx-3 mt-3 flex items-center justify-between rounded-2xl px-4 py-3 md:mx-6 md:px-6">
-        <div className="flex items-center gap-3">
-          <img
-            src={logoAsset.url}
-            alt="Oligens"
-            className="h-10 w-10 drop-shadow-[0_0_12px_rgba(255,215,0,0.6)]"
-          />
-          <div className="leading-tight">
-            <div className="font-display text-lg font-bold tracking-[0.3em] text-white md:text-xl">
-              OLIGENS
-              <span className="ml-2 text-[color:var(--oligens-gold)]">
-                DETECTOR
-              </span>
+      <div className="relative mx-auto flex min-h-screen max-w-[1780px] flex-col gap-6 px-5 py-5 lg:px-8">
+        <header className="glass-panel sticky top-4 z-20 flex flex-col gap-4 rounded-[32px] border-white/10 px-5 py-4 shadow-[0_20px_80px_rgba(0,0,0,0.35)] md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4 text-white">
+            <div className="grid h-14 w-14 place-items-center rounded-3xl bg-white/5 text-[color:var(--oligens-gold)] shadow-[0_0_24px_rgba(255,184,0,0.25)] ring-1 ring-white/10">
+              <span className="text-2xl">⟳</span>
             </div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/50">
-              Quantum Text Intelligence · v1.0
+            <div>
+              <div className="font-display text-xl font-semibold uppercase tracking-[0.35em] text-white">
+                OLIGENS DETECTOR
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.45em] text-white/60">
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">PLAN GRATUIT</span>
+                <span>Luxury Quantum Sci-Fi</span>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="hidden items-center gap-5 font-mono text-[11px] uppercase tracking-widest text-white/70 md:flex">
-          <Telemetry label="CPU" value={cpu} />
-          <Telemetry label="RAM" value={ram} />
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-            </span>
-            <span>System · ONLINE</span>
-          </div>
-        </div>
-        <div className="flex gap-2 ml-3">
-          <button
-            onClick={() => setProfileOpen(true)}
-            className="oligens-btn-ghost !px-3 !py-1.5 text-[10px]"
-            title="User Profile"
-          >
-            {userProfile ? userProfile.fullName : "Profile"}
-          </button>
-          <button
-            onClick={() => setHistoryOpen(true)}
-            className="oligens-btn-ghost !px-3 !py-1.5 text-[10px]"
-            title="View analysis & humanization history"
-          >
-            History · {history.length}
-          </button>
-        </div>
-      </header>
-      
-      {/* User Profile Modal */}
-      <Dialog.Root open={profileOpen} onOpenChange={setProfileOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl glass-panel border border-white/10 p-6 shadow-2xl">
-            <Dialog.Title className="font-display text-xl font-semibold tracking-wide text-white mb-4">Profil Utilisateur</Dialog.Title>
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              const formData = new FormData(e.currentTarget);
-              const profile: UserProfile = {
-                userId: userProfile?.userId || `USR-${Date.now()}`,
-                fullName: formData.get("fullName") as string,
-                role: formData.get("role") as string,
-                preferredRegister: formData.get("preferredRegister") as Register,
-                createdAt: userProfile?.createdAt || Date.now(),
-              };
-              await db.users.put(profile);
-              setUserProfile(profile);
-              setRegister(profile.preferredRegister);
-              setProfileOpen(false);
-            }}>
-              <div className="space-y-4 font-mono text-[11px] uppercase tracking-widest text-white/70">
-                <div>
-                  <label className="block mb-1">Nom Complet</label>
-                  <input name="fullName" defaultValue={userProfile?.fullName || ""} required className="w-full rounded-lg border border-white/15 bg-black/60 px-3 py-2 text-white/90 outline-none focus:border-[color:var(--oligens-gold)]/60" />
-                </div>
-                <div>
-                  <label className="block mb-1">Rôle / Profession</label>
-                  <input name="role" defaultValue={userProfile?.role || ""} placeholder="e.g. Avocat / Juriste" required className="w-full rounded-lg border border-white/15 bg-black/60 px-3 py-2 text-white/90 outline-none focus:border-[color:var(--oligens-gold)]/60" />
-                </div>
-                <div>
-                  <label className="block mb-1">Registre Préféré</label>
-                  <select name="preferredRegister" defaultValue={userProfile?.preferredRegister || "professionnel"} className="w-full rounded-lg border border-white/15 bg-black/60 px-3 py-2 text-white/90 outline-none focus:border-[color:var(--oligens-gold)]/60">
-                    <option value="juridique">Juridique & Institutionnel</option>
-                    <option value="academique">Académique / Recherche</option>
-                    <option value="professionnel">Professionnel & Neutre</option>
-                    <option value="creatif">Créatif & Fluidité</option>
-                  </select>
-                </div>
-                <div className="flex justify-end gap-3 mt-6">
-                  <button type="button" onClick={() => setProfileOpen(false)} className="oligens-btn-ghost">Annuler</button>
-                  <button type="submit" className="oligens-btn-primary">Sauvegarder</button>
-                </div>
-              </div>
-            </form>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
 
-      <HistoryDrawer
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        items={history}
-        onClear={async () => {
-          await clearHistory();
-          setHistory([]);
-        }}
-        onDelete={async (id) => setHistory(await deleteRecord(id))}
-        onReload={(rec) => {
-          setText(rec.originalText);
-          setMetrics(null);
-          setHumanized(null);
-          setRapport(null);
-          setHistoryOpen(false);
-        }}
-      />
-
-
-      <main className="mx-auto max-w-7xl px-3 pb-24 pt-6 md:px-6">
-        {/* Hero */}
-        <section className="mb-8 text-center">
-          <h1 className="font-display text-3xl font-bold tracking-tight text-white md:text-5xl">
-            Detect the machine.{" "}
-            <span className="oligens-gold-text">Restore the human.</span>
-          </h1>
-          <p className="mx-auto mt-3 max-w-2xl text-sm text-white/60 md:text-base">
-            Real-time mathematical analysis — perplexity, burstiness and
-            n-gram density — followed by semantic-preserving humanization.
-          </p>
-        </section>
-
-        {/* Local Indexing Card */}
-        <section className="mb-6 glass-panel rounded-2xl p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <SectionHeader
-              index="L"
-              title="Indexation Locale (Offline)"
-              hint={localDocCount > 0 ? `${localDocCount} documents indexés` : "Aucun dossier connecté"}
-            />
-            <p className="text-xs text-white/50 max-w-lg font-mono leading-relaxed mt-[-10px]">
-              Associez un dossier local de votre institution (PDF, DOCX, TXT). Les fichiers sont analysés localement et 100% hors-ligne.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 min-w-[250px]">
-            <button 
-              onClick={handleSyncDirectory}
-              disabled={syncingIndex}
-              className="oligens-btn-primary !py-2 w-full flex justify-center items-center gap-2"
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Link
+              to="/profile"
+              className="oligens-btn-ghost rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/80 transition hover:border-[color:var(--oligens-gold)]/60 hover:text-[color:var(--oligens-gold)]"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-              {syncingIndex ? "Synchronisation..." : (localDocCount > 0 ? "Resynchroniser l'index" : "Connecter un dossier")}
-            </button>
-            <button 
-              onClick={() => setInfoModalOpen(true)}
-              className="oligens-btn-ghost !py-2 w-full"
+              Profil
+            </Link>
+            <Link
+              to="/history"
+              className="oligens-btn-ghost rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/80 transition hover:border-cyan-400/60 hover:text-cyan-300"
             >
-              En savoir plus sur la confidentialité
-            </button>
-            {syncMsg && <div className="text-[10px] text-white/60 font-mono text-center uppercase tracking-widest">{syncMsg}</div>}
+              Historique
+            </Link>
+            <Link
+              to="/pricing"
+              className="oligens-btn-ghost rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/80 transition hover:border-lime-400/60 hover:text-lime-300"
+            >
+              Pricing
+            </Link>
           </div>
-        </section>
+        </header>
 
-        {/* Info Modal */}
-        <Dialog.Root open={infoModalOpen} onOpenChange={setInfoModalOpen}>
-          <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm" />
-            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl glass-panel border border-[color:var(--oligens-gold)]/30 p-6 shadow-2xl">
-              <Dialog.Title className="font-display text-xl font-semibold tracking-wide text-[color:var(--oligens-gold)] mb-4 flex items-center gap-2">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                Confidentialité 100% Locale
-              </Dialog.Title>
-              <div className="space-y-4 text-sm text-white/80 leading-relaxed font-mono">
-                <p>
-                  L'Indexation Locale vous permet de créer une base de données de recherche (Cross-Check) privée en utilisant l'API <strong>File System Access</strong> de votre navigateur.
-                </p>
-                <div className="rounded-lg border border-white/10 bg-black/40 p-3 space-y-2">
-                  <h3 className="text-white font-semibold">Comment ça marche ?</h3>
-                  <ol className="list-decimal pl-4 space-y-1 text-white/60">
-                    <li>Regroupez vos documents institutionnels (PDF, DOCX, TXT) dans un dossier sur votre disque dur.</li>
-                    <li>Cliquez sur "Connecter un dossier" et autorisez l'accès en lecture.</li>
-                    <li>Oligens Detector analyse les fichiers <strong>localement</strong> et génère des empreintes n-grammes (hachages) stockées dans la base de données interne du navigateur (IndexedDB).</li>
-                  </ol>
-                </div>
-                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-200">
-                  <h3 className="font-semibold text-emerald-400 mb-1">Garantie de Confidentialité Zéro-Transfert</h3>
-                  <p className="text-xs">
-                    Aucun fichier, texte ou empreinte ne quitte votre ordinateur. Le traitement est 100% hors-ligne. Les serveurs externes (incluant l'API Crossref) ne sont interrogés qu'avec des métadonnées publiques de citations, jamais avec le contenu de vos documents locaux.
-                  </p>
-                </div>
-                <div className="pt-2 flex justify-end">
-                  <button onClick={() => setInfoModalOpen(false)} className="oligens-btn-primary">Compris</button>
-                </div>
+        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_380px]">
+          <aside className="glass-panel rounded-[32px] border-white/10 p-5 text-white/90 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+            <div className="mb-6">
+              <div className="font-mono text-[10px] uppercase tracking-[0.35em] text-[color:var(--oligens-gold)]">
+                Contrôle
               </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
+              <h2 className="mt-3 font-display text-2xl font-semibold tracking-tight text-white">
+                Navigation système
+              </h2>
+            </div>
 
-        <div className="grid gap-5 lg:grid-cols-2">
-          {/* Card 1 — Input */}
-          <div className="glass-panel rounded-2xl p-5 md:p-6">
-            <SectionHeader
-              index="01"
-              title="Signal Input"
-              hint="Paste text or drop a .docx"
-            />
-
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
-              onClick={() => fileRef.current?.click()}
-              className={`group mb-4 flex cursor-pointer items-center justify-between rounded-xl border border-dashed px-4 py-3 transition-all ${
-                dragOver
-                  ? "border-[color:var(--oligens-gold)] bg-[rgba(255,215,0,0.06)]"
-                  : "border-white/15 hover:border-[color:var(--oligens-gold)]/60"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-lg bg-white/5 text-[color:var(--oligens-gold)]">
-                  <UploadIcon />
-                </div>
-                <div className="text-sm">
-                  <div className="font-mono uppercase tracking-widest text-white/80">
-                    {fileName ?? "Drop .docx / .txt"}
-                  </div>
-                  <div className="text-[11px] text-white/40">
-                    or click to browse — parsed locally, never uploaded
-                  </div>
-                </div>
-              </div>
-              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-[color:var(--oligens-gold)] opacity-80 group-hover:opacity-100">
-                Ingest ↴
-              </span>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".docx,.txt,.md"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void handleFile(f);
-                }}
+            <div className="space-y-3">
+              <SidebarButton label="📁 CONNECTER DOSSIER LOCAL" accent="cyan" onClick={handleFolderConnect} />
+              <SidebarButton
+                label="🛡️ CONFIDENTIALITÉ (EN SAVOIR PLUS)"
+                accent="gold"
+                onClick={() => setPrivacyOpen(true)}
+              />
+              <SidebarButton
+                label="💡 HUMANISATION (EN SAVOIR PLUS)"
+                accent="cyan"
+                onClick={() => setHumanizationOpen(true)}
               />
             </div>
 
-            <div className="relative">
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="// Paste any text here to scan for AI signatures…"
-                className="min-h-[280px] w-full resize-y rounded-xl border border-white/10 bg-black/40 p-4 pr-16 font-mono text-sm leading-relaxed text-white/90 outline-none placeholder:text-white/25 focus:border-[color:var(--oligens-gold)]/60 focus:shadow-[0_0_0_1px_rgba(255,215,0,0.4),0_0_20px_rgba(255,215,0,0.15)]"
-                spellCheck={false}
-              />
-              <div className="pointer-events-none absolute bottom-3 right-3 flex flex-col items-end gap-0.5 font-mono text-[10px] uppercase tracking-widest text-white/40">
-                <span>{stats.words} words</span>
-                <span>{stats.chars} chars</span>
-                <span>{stats.lines} lines</span>
+            <div className="mt-8 rounded-[28px] border border-white/10 bg-[#05070B]/80 p-4">
+              <div className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/50">
+                Statut du dossier local
+              </div>
+              <div className="mt-3 rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+                <div className="font-semibold text-white">{connectedFolder || "Aucun dossier connecté"}</div>
+                <div className="mt-2 text-xs text-white/60">{localSyncMessage}</div>
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                onClick={runAnalysis}
-                disabled={analyzing || !text.trim()}
-                className="oligens-btn-primary"
+            <div className="mt-8 rounded-[28px] border border-white/10 bg-[#05070B]/80 p-4">
+              <div className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/50">
+                Mode d'humanisation
+              </div>
+              <select
+                value={mode}
+                onChange={(event) => setMode(event.target.value)}
+                className="mt-3 w-full rounded-3xl border border-white/10 bg-black/60 px-4 py-3 text-sm text-white outline-none transition focus:border-[color:var(--oligens-gold)]/60 focus:ring-[0.5px] focus:ring-[color:var(--oligens-gold)]/20"
               >
-                <span className="relative z-10 flex items-center gap-2">
-                  <BoltIcon />
-                  {analyzing ? "SCANNING…" : "RUN QUANTUM ANALYSIS"}
-                </span>
-              </button>
-              <button
-                onClick={() => {
-                  setText(SAMPLE);
-                  setFileName(null);
-                }}
-                className="oligens-btn-ghost"
-              >
-                Load AI Sample
-              </button>
-              <button
-                onClick={() => {
-                  setText("");
-                  setMetrics(null);
-                  setHumanized(null);
-                  setRapport(null);
-                  setOllamaError(null);
-                  setFileName(null);
-                }}
-                className="oligens-btn-ghost"
-              >
-                Clear
-              </button>
-              <div className="ml-auto">
-                <SoundWave active={analyzing || humanizing} />
+                {HUMANIZATION_MODES.map((option) => (
+                  <option key={option.value} value={option.value} className="bg-[#05070B] text-white">
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </aside>
+
+          <main className="glass-panel rounded-[36px] border-white/10 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:p-6">
+            <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/50">
+                  QUANTUM TERMINAL
+                </div>
+                <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                  Analyse de texte sophistiquée
+                </h1>
+              </div>
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/70 shadow-[0_0_20px_rgba(0,0,0,0.15)]">
+                {stats.words.toLocaleString()} / {wordLimit.toLocaleString()} mots
+                <span className="ml-2 text-[color:var(--oligens-gold)]">LIMITE FREEMIUM</span>
               </div>
             </div>
 
-            {analyzing && (
-              <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-[color:var(--oligens-gold)] to-amber-200 transition-all"
-                  style={{
-                    width: `${progress}%`,
-                    boxShadow: "0 0 12px rgba(255,215,0,0.6)",
-                  }}
+            <div className="grid gap-4 md:grid-cols-[1fr_280px]">
+              <div className="flex flex-col gap-4">
+                <HeatmapText
+                  text={text}
+                  onTextChange={setText}
+                  segments={heatmapSegments}
+                  showHeatmap={activeTab === "heatmap"}
+                  rows={12}
+                  placeholder="Collez votre texte ici pour déceler l'empreinte IA..."
                 />
-              </div>
-            )}
-          </div>
 
-          {/* Card 2 — Results */}
-          <div className="glass-panel rounded-2xl p-5 md:p-6">
-            <SectionHeader
-              index="02"
-              title="Detection Metrics"
-              hint={metrics ? "Live analysis complete" : "Awaiting signal…"}
-            />
-
-            {!metrics ? (
-              <EmptyState />
-            ) : (
-              <>
-                <div className="mb-6 flex flex-col items-center justify-center gap-4 md:flex-row md:gap-8">
-                  <CircularGauge
-                    value={metrics.aiScore}
-                    label="AI Probability"
-                    sublabel={verdict(metrics.aiScore)}
-                    size={210}
-                  />
-                  <div className="flex-1 space-y-4">
-                    <MetricBar
-                      label="Perplexity (Entropy)"
-                      value={metrics.perplexityNorm}
-                      raw={metrics.perplexity.toFixed(2) + " bits"}
-                      inverted
+                <div className="grid gap-3 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="rounded-[24px] border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold uppercase tracking-[0.25em] text-white/80 transition hover:border-cyan-300/50 hover:bg-white/10"
+                    >
+                      📥 IMPORTER FICHIER
+                    </button>
+                    <ActionButton
+                      label={`🔥 ${isAnalyzing ? "ANALYSE EN COURS" : "ANALYSER / DÉTECTER"}`}
+                      variant="gold"
+                      fullWidth
+                      onClick={handleAnalyze}
+                      disabled={isAnalyzing || !text.trim()}
                     />
-                    <MetricBar
-                      label="Burstiness (Variance)"
-                      value={metrics.burstinessNorm}
-                      raw={metrics.burstiness.toFixed(1)}
-                      inverted
+                    <ActionButton
+                      label="📄 EXPORTER RAPPORT"
+                      variant="ghost"
+                      fullWidth
+                      onClick={handleExportReport}
+                      disabled={!analysisResult}
                     />
-                    <MetricBar
-                      label="N-Gram AI Density"
-                      value={metrics.ngramDensity}
-                      raw={`${metrics.ngramHits} markers`}
-                    />
-                    <div className="grid grid-cols-3 gap-2 pt-1 font-mono text-[10px] uppercase tracking-widest text-white/50">
-                      <Stat label="Sentences" value={metrics.sentenceCount} />
-                      <Stat label="Words" value={metrics.wordCount} />
-                      <Stat
-                        label="Avg Len"
-                        value={metrics.avgSentenceLength.toFixed(1)}
-                      />
-                    </div>
                   </div>
-                </div>
 
-                <div className="mb-4 grid gap-4 md:grid-cols-3">
-                  <div className="rounded-xl border border-[color:var(--oligens-gold)]/40 bg-black/30 p-4">
-                    <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-[color:var(--oligens-gold)]">LLM Profile Signature</div>
-                    <div className="font-mono text-sm text-white/90">{metrics.llmSignature || "None"}</div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <ActionButton
+                      label={`✨ ${isHumanizing ? "HUMANISATION…" : "HUMANISER / HUMANIZE"}`}
+                      variant="cyan"
+                      fullWidth
+                      onClick={handleHumanize}
+                      disabled={isHumanizing || !text.trim()}
+                    />
+                    <ActionButton label="🗑️ EFFACER / CLEAR" variant="ghost" fullWidth onClick={handleClear} />
                   </div>
-                  {factDensity && (
-                    <div className={`rounded-xl border p-4 ${factDensity.status === 'High Substance' ? 'border-emerald-500/40 bg-emerald-500/10' : factDensity.status === 'AI Fluff' ? 'border-red-500/40 bg-red-500/10' : 'border-white/10 bg-black/30'}`}>
-                      <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-white/50">
-                        <span>Fact Density</span>
-                        <span className={factDensity.status === 'High Substance' ? 'text-emerald-400' : factDensity.status === 'AI Fluff' ? 'text-red-400' : 'text-amber-400'}>{factDensity.status}</span>
-                      </div>
-                      <div className="font-mono text-sm text-white/90">{factDensity.factDensityIndex.toFixed(1)}% <span className="text-white/40 text-[10px]">({factDensity.entitiesFound} entities)</span></div>
-                    </div>
-                  )}
-                  {plagiarism && (
-                    <div className={`rounded-xl border p-4 ${plagiarism.plagiarismScore > 0 ? 'border-purple-500/40 bg-purple-500/10' : 'border-emerald-500/40 bg-emerald-500/10'}`}>
-                      <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-white/50">
-                        <span>Citation Audit</span>
-                        <span className={plagiarism.plagiarismScore > 0 ? 'text-purple-400' : 'text-emerald-400'}>{plagiarism.plagiarismScore > 0 ? 'Claims Flagged' : 'All Clear'}</span>
-                      </div>
-                      <div className="font-mono text-sm text-white/90">{plagiarism.plagiarismScore.toFixed(1)}% Flagged</div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mb-4 rounded-xl border border-white/10 bg-black/30 p-4 font-mono text-[11px] leading-relaxed text-white/70">
-                  <span className="text-[color:var(--oligens-gold)]">
-                    S_IA(T) ={" "}
-                  </span>
-                  σ( 0.5·(1 − P/P_max) + 0.3·(1 − Var/Var_max) + 0.2·(K/N) ) ={" "}
-                  <span className="text-white">
-                    {(metrics.aiScore * 100).toFixed(2)}%
-                  </span>
-                </div>
-
-                <div className="mb-3 flex flex-col gap-1">
-                  <label className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/50">
-                    Style / Register
-                  </label>
-                  <select
-                    value={register}
-                    onChange={(e) => setRegister(e.target.value as Register)}
-                    className="w-full rounded-lg border border-white/15 bg-black/60 px-3 py-2 font-mono text-xs uppercase tracking-widest text-white/90 outline-none focus:border-[color:var(--oligens-gold)]/60"
-                  >
-                    <option value="juridique">Juridique &amp; Institutionnel</option>
-                    <option value="academique">Académique / Recherche</option>
-                    <option value="professionnel">Professionnel &amp; Neutre</option>
-                    <option value="creatif">Créatif &amp; Fluidité</option>
-                  </select>
-                </div>
-
-                <div className="mt-4 flex flex-col gap-2">
-                  <button
-                    onClick={runHumanize}
-                    disabled={humanizing}
-                    className="oligens-btn-primary w-full"
-                  >
-                    <span className="relative z-10 flex items-center justify-center gap-2">
-                      <SparkIcon />
-                      {humanizing
-                        ? "HUMANIZING…"
-                        : "HUMANIZE TEXT (OPTIMIZATION)"}
-                    </span>
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!metrics) return;
-                      await generateAuditReport({
-                        documentTitle: fileName || "Untitled",
-                        userName: userProfile?.fullName || "Anonymous",
-                        userRole: userProfile?.role || "User",
-                        originalText: text,
-                        initialMetrics: metrics,
-                        finalMetrics: humanized?.after,
-                        semanticScore: humanized?.similarity,
-                        factDensity: factDensity || undefined,
-                        plagiarism: plagiarism || undefined,
-                        llmSignature: metrics.llmSignature || "None"
-                      });
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".txt,.pdf,.docx,.xlsx"
+                    className="hidden"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      const extractedText = await extractTextFromFile(file);
+                      setText(extractedText);
+                      setAnalysisResult(null);
+                      setActiveTab("editor");
+                      event.target.value = "";
                     }}
-                    className="oligens-btn-ghost w-full border border-[color:var(--oligens-gold)]/40 text-[color:var(--oligens-gold)]"
-                  >
-                    EXPORT OFFICIAL AUDIT REPORT (PDF)
-                  </button>
-                </div>
-                <button
-                  onClick={runOllama}
-                  disabled={ollamaBusy || !text.trim()}
-                  className="oligens-btn-ghost mt-2 w-full"
-                  title="Requires Ollama running locally with llama3.2:3b"
-                >
-                  {ollamaBusy
-                    ? "CALLING OLLAMA…"
-                    : "FALLBACK · LOCAL OLLAMA (llama3.2:3b)"}
-                </button>
-                {ollamaError && (
-                  <div className="mt-2 rounded-md border border-red-400/30 bg-red-500/5 p-2 font-mono text-[10px] uppercase tracking-widest text-red-300">
-                    {ollamaError}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-
-        {rapport && (
-          <section className="glass-panel mt-6 rounded-2xl p-5 md:p-6">
-            <SectionHeader
-              index="R"
-              title="Humanizer Report"
-              hint={rapport.decision}
-            />
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
-              <RapportStat
-                label="Initial AI"
-                value={`${(rapport.proba_initiale * 100).toFixed(1)}%`}
-              />
-              <RapportStat
-                label="Final AI"
-                value={`${(rapport.proba_finale * 100).toFixed(1)}%`}
-                gold
-              />
-              <RapportStat
-                label="Reduction"
-                value={`${rapport.reduction_pourcent.toFixed(1)}%`}
-              />
-              <RapportStat
-                label="Iterations"
-                value={String(rapport.iterations_realisees)}
-              />
-              <RapportStat
-                label="Integrity"
-                value={`${(rapport.semanticIntegrityScore * 100).toFixed(1)}%`}
-              />
-              <RapportStat
-                label="Reverted"
-                value={String(rapport.sentencesReverted)}
-              />
-              <RapportStat
-                label="Register"
-                value={rapport.register.toUpperCase()}
-              />
-            </div>
-            {rapport.historique.length > 0 && (
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 font-mono text-[10px] uppercase tracking-widest text-white/60">
-                <div className="mb-2 text-[color:var(--oligens-gold)]">
-                  Iteration Trace
-                </div>
-                <ul className="space-y-1">
-                  {rapport.historique.map((h) => (
-                    <li key={h.iteration} className="flex justify-between">
-                      <span>#{h.iteration}</span>
-                      <span className="text-white/80">
-                        AI · {(h.proba * 100).toFixed(1)}%
-                      </span>
-                      <span className="text-white/40">
-                        {h.anomalies.map((a) => a.nom).join(" · ")}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* Bottom panel — humanized output */}
-        {humanized && (
-          <section className="glass-panel mt-6 rounded-2xl p-5 md:p-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <SectionHeader
-                index="03"
-                title="Humanization Output"
-                hint="Semantic-preserving rewrite"
-              />
-              <div className="flex flex-wrap items-center gap-3">
-                <IntegrityBadge
-                  score={rapport?.semanticIntegrityScore ?? humanized.similarity}
-                />
-                <div className="rounded-lg border border-[color:var(--oligens-gold)]/40 bg-[rgba(255,215,0,0.05)] px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest text-[color:var(--oligens-gold)]">
-                  AI Score{" "}
-                  <span className="text-white/80 line-through">
-                    {(humanized.before.aiScore * 100).toFixed(1)}%
-                  </span>{" "}
-                  →{" "}
-                  <span className="text-white">
-                    {(humanized.after.aiScore * 100).toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-3 flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-widest">
-              <TabBtn
-                active={tab === "original"}
-                onClick={() => setTab("original")}
-              >
-                Original
-              </TabBtn>
-              <TabBtn
-                active={tab === "humanized"}
-                onClick={() => setTab("humanized")}
-              >
-                Humanized
-              </TabBtn>
-              <div className="ml-auto flex items-center gap-3">
-                <HeatLegend />
-                <button
-                  onClick={() => setShowDiff((v) => !v)}
-                  className={`rounded-md border px-3 py-1.5 transition-all ${
-                    showDiff
-                      ? "border-[color:var(--oligens-gold)] bg-[rgba(255,215,0,0.08)] text-[color:var(--oligens-gold)]"
-                      : "border-white/10 text-white/60 hover:border-white/30 hover:text-white/90"
-                  }`}
-                >
-                  {showDiff ? "Diff · ON" : "Diff View"}
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <ComparePane
-                title="Input"
-                text={text}
-                highlight={tab === "original"}
-                heat={originalHeat}
-                actions={{
-                  onReplaceSentence: (oldText: string, newText: string) => {
-                    setText(t => t.replace(oldText, newText));
-                  },
-                  onAddCitation: (oldText: string, sourceOverride?: string) => {
-                    setText(t => {
-                      const newT = t.replace(oldText, oldText + " [1]");
-                      if (!newT.includes("[1] Source:")) {
-                        return newT + `\n\n[1] Source: ${sourceOverride || "Suggested Citation, 2026."}`;
-                      }
-                      return newT;
-                    });
-                  }
-                } as any}
-              />
-              <ComparePane
-                title="Optimized Output"
-                text={humanized.text}
-                highlight={tab === "humanized"}
-                gold
-                heat={humanizedHeat}
-                actions={
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => navigator.clipboard.writeText(humanized.text)}
-                      className="oligens-btn-ghost !py-1 !px-3 text-[10px]"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                }
-              />
-            </div>
-
-            {showDiff && (
-              <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-4">
-                <div className="mb-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.3em] text-white/60">
-                  <span>Side-by-Side Diff</span>
-                  <span className="text-white/40">
-                    <span className="text-emerald-300">+ additions</span> ·{" "}
-                    <span className="text-red-300">− removals</span>
-                  </span>
-                </div>
-                <div className="max-h-[420px] overflow-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed">
-                  {diffTokens.map((tok, i) => (
-                    <span
-                      key={i}
-                      className={
-                        tok.op === "add"
-                          ? "rounded-sm bg-emerald-500/20 text-emerald-200"
-                          : tok.op === "del"
-                            ? "rounded-sm bg-red-500/20 text-red-300 line-through"
-                            : "text-white/85"
-                      }
-                    >
-                      {tok.text}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-        <footer className="mt-10 text-center font-mono text-[10px] uppercase tracking-[0.35em] text-white/30">
-          Oligens Detector · All computation runs locally in-browser · Zero telemetry
-        </footer>
-      </main>
-    </div>
-  );
-}
-
-function verdict(aiScore: number): string {
-  if (aiScore > 0.85) return "Almost certainly AI";
-  if (aiScore > 0.65) return "Likely AI-generated";
-  if (aiScore > 0.4) return "Mixed / uncertain";
-  if (aiScore > 0.2) return "Likely human";
-  return "Very human";
-}
-
-function RapportStat({
-  label,
-  value,
-  gold,
-}: {
-  label: string;
-  value: string;
-  gold?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-3 ${
-        gold
-          ? "border-[color:var(--oligens-gold)]/50 bg-[rgba(255,215,0,0.06)]"
-          : "border-white/10 bg-white/[0.02]"
-      }`}
-    >
-      <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/50">
-        {label}
-      </div>
-      <div
-        className={`mt-1 font-display text-xl font-semibold ${
-          gold ? "text-[color:var(--oligens-gold)]" : "text-white"
-        }`}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({
-  index,
-  title,
-  hint,
-}: {
-  index: string;
-  title: string;
-  hint?: string;
-}) {
-  return (
-    <div className="mb-4 flex items-end justify-between">
-      <div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.4em] text-[color:var(--oligens-gold)]">
-          / {index}
-        </div>
-        <h2 className="mt-0.5 font-display text-xl font-semibold tracking-wide text-white">
-          {title}
-        </h2>
-      </div>
-      {hint && (
-        <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">
-          {hint}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function Telemetry({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-white/50">{label}</span>
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-white/10">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-[color:var(--oligens-gold)] to-amber-200"
-          style={{
-            width: `${value}%`,
-            boxShadow: "0 0 6px rgba(255,215,0,0.5)",
-          }}
-        />
-      </div>
-      <span className="w-8 tabular-nums text-white/80">{value.toFixed(0)}%</span>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-lg border border-white/5 bg-white/[0.02] px-2 py-1.5">
-      <div className="text-white/40">{label}</div>
-      <div className="mt-0.5 text-sm text-white/90">{value}</div>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="grid min-h-[320px] place-items-center rounded-xl border border-dashed border-white/10 bg-black/20 text-center">
-      <div>
-        <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full border border-[color:var(--oligens-gold)]/40 text-[color:var(--oligens-gold)]">
-          <ScanIcon />
-        </div>
-        <div className="font-mono text-[11px] uppercase tracking-[0.35em] text-white/60">
-          No signal detected
-        </div>
-        <div className="mt-1 text-xs text-white/40">
-          Provide text and run Quantum Analysis
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TabBtn({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-md border px-3 py-1.5 transition-all ${
-        active
-          ? "border-[color:var(--oligens-gold)] bg-[rgba(255,215,0,0.08)] text-[color:var(--oligens-gold)]"
-          : "border-white/10 text-white/50 hover:border-white/30 hover:text-white/80"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ComparePane({
-  title,
-  text,
-  highlight,
-  gold,
-  heat,
-  actions,
-}: {
-  title: string;
-  text: string;
-  highlight?: boolean;
-  gold?: boolean;
-  heat?: SentenceHeat[];
-  actions?: React.ReactNode;
-}) {
-  return (
-    <div
-      className={`flex flex-col rounded-xl border p-4 transition-all ${
-        highlight
-          ? gold
-            ? "border-[color:var(--oligens-gold)]/60 bg-[rgba(255,215,0,0.04)] shadow-[0_0_25px_rgba(255,215,0,0.12)]"
-            : "border-white/25 bg-white/[0.03]"
-          : "border-white/10 bg-black/20"
-      }`}
-    >
-      <div className="mb-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.3em]">
-        <span className={gold ? "text-[color:var(--oligens-gold)]" : "text-white/50"}>
-          {title}
-        </span>
-        {actions}
-      </div>
-      <div className="max-h-[360px] overflow-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-white/85">
-        {heat && heat.length > 0
-          ? heat.map((s, i) => {
-              let cls = "";
-              let borderCls = "";
-              
-              if (s.score > 0.75) {
-                cls = "bg-red-500/25 text-red-100";
-              } else if (s.score >= 0.4) {
-                cls = "bg-yellow-400/20 text-amber-100";
-              }
-
-              // Overwrite with plagiarism highlighting if applicable
-              const plagData = plagiarism?.sentences.find(ps => ps.text === s.text);
-              if (plagData?.citationStatus === "PLAGIARISM") {
-                cls = "bg-purple-500/30 text-purple-200 border-b-2 border-purple-400";
-                borderCls = "ring-purple-400";
-              } else if (plagData?.citationStatus === "Properly Cited (Footnote)") {
-                cls = "bg-emerald-500/20 text-emerald-100 border-b-2 border-emerald-400";
-                borderCls = "ring-emerald-400";
-              }
-              
-              const tip =
-                `AI ${(s.score * 100).toFixed(0)}%` +
-                (s.markers.length ? ` · markers: ${s.markers.join(", ")}` : "") + 
-                (plagData?.localSource ? ` · Local DB: ${plagData.localSource}` : "");
-                
-              return (
-                <Popover.Root key={i}>
-                  <Popover.Trigger asChild>
-                    <span
-                      title={tip}
-                      className={`rounded-sm px-0.5 cursor-pointer hover:ring-1 hover:ring-[color:var(--oligens-gold)] transition-all ${cls} ${borderCls}`}
-                    >
-                      {s.text}
-                      {i < heat.length - 1 ? " " : ""}
-                    </span>
-                  </Popover.Trigger>
-                  <Popover.Portal>
-                    <Popover.Content className="z-50 w-72 rounded-xl border border-white/15 bg-[#0a0a0f] p-4 shadow-2xl" sideOffset={5}>
-                      <div className="mb-3 flex justify-between items-center font-mono text-[10px] uppercase tracking-widest text-white/50">
-                        <span>Micro-Humanization</span>
-                        <span>AI {(s.score * 100).toFixed(0)}%</span>
+                  />
+                {humanizeReport ? (
+                  <div className="mt-4 rounded-[28px] border border-white/10 bg-[#04060A]/80 p-4 text-sm text-white/80">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/50">
+                      Rapport d'humanisation
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.35em] text-white/50">IA avant</div>
+                        <div className="mt-1 text-lg font-semibold text-white">{Math.round(humanizeReport.proba_initiale * 100)}%</div>
                       </div>
-                      
-                      {plagData?.suggestedSource && (
-                        <div className="mb-3 rounded-lg border border-purple-500/40 bg-purple-500/10 p-2 text-[10px] font-mono text-purple-200">
-                          <span className="block mb-1 text-purple-400 uppercase tracking-widest">Source suggérée (Crossref) :</span>
-                          {plagData.suggestedSource}
-                          <button 
-                            onClick={() => actions && (actions as any).onAddCitation && (actions as any).onAddCitation(s.text, plagData.suggestedSource)}
-                            className="mt-1 block w-full text-center rounded bg-purple-500/20 hover:bg-purple-500/40 py-1 transition-colors"
-                          >
-                            Insérer Citation APA
-                          </button>
-                        </div>
-                      )}
-                      <div className="space-y-2 font-mono text-[11px]">
-                        <button 
-                          onClick={() => actions && (actions as any).onReplaceSentence && (actions as any).onReplaceSentence(s.text, `(Formal) ${s.text}`)}
-                          className="w-full text-left rounded bg-white/5 p-2 hover:bg-white/10 hover:text-[color:var(--oligens-gold)] transition-colors"
-                        >
-                          Formal Rewrite
-                        </button>
-                        <button 
-                          onClick={() => actions && (actions as any).onReplaceSentence && (actions as any).onReplaceSentence(s.text, `(Concise) ${s.text}`)}
-                          className="w-full text-left rounded bg-white/5 p-2 hover:bg-white/10 hover:text-[color:var(--oligens-gold)] transition-colors"
-                        >
-                          Concise Rewrite
-                        </button>
-                        <button 
-                          onClick={() => actions && (actions as any).onReplaceSentence && (actions as any).onReplaceSentence(s.text, `(Casual) ${s.text}`)}
-                          className="w-full text-left rounded bg-white/5 p-2 hover:bg-white/10 hover:text-[color:var(--oligens-gold)] transition-colors"
-                        >
-                          Conversational Rewrite
-                        </button>
-                        {s.score > 0.4 && (
-                          <button 
-                            onClick={() => actions && (actions as any).onAddCitation && (actions as any).onAddCitation(s.text)}
-                            className="mt-2 w-full text-left rounded border border-purple-500/40 bg-purple-500/10 p-2 text-purple-300 hover:bg-purple-500/20 transition-colors"
-                          >
-                            + Add Footnote Citation
-                          </button>
-                        )}
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.35em] text-white/50">IA après</div>
+                        <div className="mt-1 text-lg font-semibold text-white">{Math.round(humanizeReport.proba_finale * 100)}%</div>
                       </div>
-                      <Popover.Arrow className="fill-[#0a0a0f]" />
-                    </Popover.Content>
-                  </Popover.Portal>
-                </Popover.Root>
-              );
-            })
-          : text}
-      </div>
-    </div>
-  );
-}
-
-function HeatLegend() {
-  return (
-    <div className="hidden items-center gap-2 font-mono text-[9px] uppercase tracking-[0.25em] text-white/50 md:flex">
-      <span className="flex items-center gap-1">
-        <span className="inline-block h-2 w-3 rounded-sm bg-red-500/50" />
-        &gt;75%
-      </span>
-      <span className="flex items-center gap-1">
-        <span className="inline-block h-2 w-3 rounded-sm bg-yellow-400/50" />
-        40–75%
-      </span>
-      <span className="flex items-center gap-1">
-        <span className="inline-block h-2 w-3 rounded-sm border border-white/30" />
-        &lt;40%
-      </span>
-    </div>
-  );
-}
-
-function IntegrityBadge({ score }: { score: number }) {
-  const pct = score * 100;
-  const ok = score >= 0.9;
-  return (
-    <div
-      className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest ${
-        ok
-          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
-          : "border-red-400/40 bg-red-500/10 text-red-200"
-      }`}
-      title="Semantic preservation (TF cosine similarity)"
-    >
-      Semantic Preservation ·{" "}
-      <span className={ok ? "text-emerald-100" : "text-red-100"}>
-        {pct.toFixed(1)}% {ok ? "✅" : "⚠"}
-      </span>
-    </div>
-  );
-}
-
-function langBadgeColor(lang: string): string {
-  switch (lang) {
-    case "FR":
-      return "border-sky-400/40 bg-sky-400/10 text-sky-200";
-    case "EN":
-      return "border-emerald-400/40 bg-emerald-400/10 text-emerald-200";
-    case "ES":
-      return "border-rose-400/40 bg-rose-400/10 text-rose-200";
-    case "HT":
-      return "border-fuchsia-400/40 bg-fuchsia-400/10 text-fuchsia-200";
-    default:
-      return "border-white/20 bg-white/5 text-white/70";
-  }
-}
-
-function HistoryDrawer({
-  open,
-  onClose,
-  items,
-  onClear,
-  onDelete,
-  onReload,
-}: {
-  open: boolean;
-  onClose: () => void;
-  items: HistoryRecord[];
-  onClear: () => void;
-  onDelete: (id: string) => void;
-  onReload: (rec: HistoryRecord) => void;
-}) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      <div
-        className="flex-1 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden
-      />
-      <aside className="glass-panel h-full w-full max-w-md overflow-y-auto rounded-l-2xl border-l border-white/10 p-5 md:p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.4em] text-[color:var(--oligens-gold)]">
-              / H
-            </div>
-            <h2 className="mt-0.5 font-display text-xl font-semibold tracking-wide text-white">
-              History · Historique
-            </h2>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={onClear}
-              disabled={items.length === 0}
-              className="oligens-btn-ghost !px-3 !py-1.5 text-[10px]"
-            >
-              Clear All
-            </button>
-            <button
-              onClick={onClose}
-              className="oligens-btn-ghost !px-3 !py-1.5 text-[10px]"
-            >
-              Close ✕
-            </button>
-          </div>
-        </div>
-
-        {items.length === 0 ? (
-          <div className="grid min-h-[200px] place-items-center rounded-xl border border-dashed border-white/10 bg-black/20 font-mono text-[11px] uppercase tracking-widest text-white/40">
-            No runs yet
-          </div>
-        ) : (
-          <ul className="space-y-3">
-            {items.map((r) => {
-              const initial = Math.round(r.initialScore * 100);
-              const final =
-                r.finalScore != null ? Math.round(r.finalScore * 100) : null;
-              const date = new Date(r.timestamp);
-              return (
-                <li
-                  key={r.id}
-                  className="rounded-xl border border-white/10 bg-white/[0.02] p-3"
-                >
-                  <div className="mb-2 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-widest">
-                    <span
-                      className={`rounded-md border px-2 py-0.5 ${
-                        r.type === "HUMANIZATION"
-                          ? "border-[color:var(--oligens-gold)]/50 bg-[rgba(255,215,0,0.08)] text-[color:var(--oligens-gold)]"
-                          : "border-white/20 bg-white/5 text-white/70"
-                      }`}
-                    >
-                      {r.type}
-                    </span>
-                    <span
-                      className={`rounded-md border px-2 py-0.5 ${langBadgeColor(r.language)}`}
-                      title={languageLabel(r.language as SupportedLang)}
-                    >
-                      {r.language}
-                    </span>
-                    {final != null ? (
-                      <span className="rounded-md border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-emerald-200">
-                        {initial}% ➔ {final}%
-                      </span>
-                    ) : (
-                      <span className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-white/70">
-                        AI · {initial}%
-                      </span>
-                    )}
-                    <span className="ml-auto text-white/40">
-                      {date.toLocaleDateString()} {date.toLocaleTimeString()}
-                    </span>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.35em] text-white/50">Conservation</div>
+                        <div className="mt-1 text-lg font-semibold text-white">{Math.round(humanizeReport.semanticIntegrityScore * 100)}%</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 text-xs text-white/60">{humanizeReport.decision}</div>
                   </div>
-                  <div className="mb-2 max-h-16 overflow-hidden font-mono text-[11px] leading-relaxed text-white/60">
-                    {r.originalText.slice(0, 220)}
-                    {r.originalText.length > 220 ? "…" : ""}
+                ) : null}
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-[32px] border border-white/10 bg-[#04060A]/90 p-5 text-center">
+                  <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center rounded-full bg-[#05070B]/80 shadow-[0_0_45px_rgba(255,184,0,0.16)]" style={{ backgroundImage: `conic-gradient(rgba(255,184,0,0.95) 0deg, rgba(255,184,0,0.95) ${globalScore * 360}deg, rgba(255,255,255,0.06) 0deg)` }}>
+                    <div className="flex h-32 w-32 items-center justify-center rounded-full bg-[#05070B] text-[2.5rem] font-semibold text-[color:var(--oligens-gold)]">
+                      {Math.round(globalScore * 100)}%
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => onReload(r)}
-                      className="oligens-btn-ghost !px-3 !py-1 text-[10px]"
-                    >
-                      Reload in Editor
-                    </button>
-                    {r.humanizedText && (
-                      <button
-                        onClick={() =>
-                          navigator.clipboard.writeText(r.humanizedText!)
-                        }
-                        className="oligens-btn-ghost !px-3 !py-1 text-[10px]"
+                  <div className="font-mono text-[10px] uppercase tracking-[0.35em] text-white/50">
+                    SCORE GLOBAL IA
+                  </div>
+                  <div className="mt-3 text-sm text-white/80">
+                    {Math.round(globalScore * 100)}% IA • {Math.max(0, 100 - Math.round(globalScore * 100))}% HUMAIN
+                  </div>
+                  <div className="mt-2 text-xs text-white/60">Signature LLM détectée : {signature}</div>
+                </div>
+
+                <div className="rounded-[32px] border border-white/10 bg-[#04060A]/90 p-5">
+                  <div className="mb-4 flex items-center justify-between text-[11px] uppercase tracking-[0.35em] text-white/50">
+                    <span>BURSTINESS</span>
+                    <span>{Math.round(burstiness * 100)}%</span>
+                  </div>
+                  <MetricBar value={burstiness} accent="cyan" />
+                  <div className="mt-5 flex items-center justify-between text-[11px] uppercase tracking-[0.35em] text-white/50">
+                    <span>PERPLEXITÉ</span>
+                    <span>{Math.round(perplexity * 100)}%</span>
+                  </div>
+                  <MetricBar value={perplexity} accent="gold" />
+                </div>
+
+                <div className="rounded-[32px] border border-white/10 bg-[#04060A]/90 p-5">
+                  <div className="mb-4 flex items-center justify-between text-[11px] uppercase tracking-[0.35em] text-white/50">
+                    <span>SCORE PLAGIAT</span>
+                    <span className="text-[color:var(--oligens-gold)]">{Math.round(plagiarismScore * 100)}%</span>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-gradient-to-r from-[#FFB800] via-[#FFCF5C] to-[#00F0FF] shadow-[0_0_18px_rgba(255,184,0,0.35)]" style={{ width: `${plagiarismScore * 100}%` }} />
+                  </div>
+                  <div className="mt-4 space-y-3 text-sm text-white/70">
+                    {PLAGIARISM_SOURCES.map((source) => (
+                      <a
+                        key={source.url}
+                        href={source.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-cyan-100 transition hover:border-cyan-400/50 hover:text-cyan-200"
                       >
-                        Copy Humanized
-                      </button>
-                    )}
-                    <button
-                      onClick={() => onDelete(r.id)}
-                      className="oligens-btn-ghost !px-3 !py-1 text-[10px] text-red-300"
-                    >
-                      Delete
-                    </button>
+                        {source.label}
+                      </a>
+                    ))}
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </aside>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-[32px] border border-white/10 bg-[#04060A]/85 p-5">
+              <div className="mb-4 flex items-center justify-between text-xs uppercase tracking-[0.35em] text-white/50">
+                <span>Visualisation Heatmap</span>
+                <div className="flex items-center gap-2">
+                  <TabButton active={activeTab === "editor"} onClick={() => setActiveTab("editor")}>
+                    Éditeur
+                  </TabButton>
+                  <TabButton active={activeTab === "heatmap"} onClick={() => setActiveTab("heatmap")}>Heatmap</TabButton>
+                </div>
+              </div>
+
+              {activeTab === "editor" ? (
+                <div className="min-h-[240px] rounded-[28px] border border-white/10 bg-black/50 p-4 text-sm text-white/90 shadow-[inset_0_0_40px_rgba(0,0,0,0.35)]">
+                  <pre className="whitespace-pre-wrap break-words font-mono leading-7">{text || "Votre texte apparaîtra ici après saisie."}</pre>
+                </div>
+              ) : (
+                <div className="min-h-[240px] rounded-[28px] border border-white/10 bg-black/50 p-4 text-sm text-white/90 shadow-[inset_0_0_40px_rgba(0,0,0,0.35)]">
+                  <div className="flex flex-wrap gap-2">
+                    {heatmapSegments.map((segment) => (
+                      <span
+                        key={segment.id}
+                        className={`inline-flex max-w-full items-center rounded-full border px-3 py-2 text-sm font-medium leading-6 transition ${
+                          segment.variant === "ai"
+                            ? "border-[#FFB800]/30 bg-[#FFB800]/15 text-[#FFF0B2]"
+                            : segment.variant === "human"
+                            ? "border-cyan-400/25 bg-cyan-400/12 text-cyan-100"
+                            : "border-white/10 bg-white/5 text-white/75"
+                        }`}
+                      >
+                        {segment.text}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </main>
+
+          <aside className="glass-panel rounded-[32px] border-white/10 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+            <div className="mb-6 flex items-center justify-between text-[10px] uppercase tracking-[0.35em] text-white/50">
+              <span>Business Intelligence</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] text-white/70">Dashboard</span>
+            </div>
+
+            <div className="space-y-5">
+              <BIStatusBlock label="Score Global IA" value={`${Math.round(globalScore * 100)}%`} />
+              <div className="rounded-[32px] border border-white/10 bg-[#04060A]/90 p-5">
+                <div className="mb-3 flex items-center justify-between text-[11px] uppercase tracking-[0.35em] text-white/50">
+                  <span>BURSTINESS</span>
+                  <span>{Math.round(burstiness * 100)}%</span>
+                </div>
+                <MetricBar value={burstiness} accent="cyan" hideLabel />
+              </div>
+              <div className="rounded-[32px] border border-white/10 bg-[#04060A]/90 p-5">
+                <div className="mb-3 flex items-center justify-between text-[11px] uppercase tracking-[0.35em] text-white/50">
+                  <span>PERPLEXITÉ</span>
+                  <span>{Math.round(perplexity * 100)}%</span>
+                </div>
+                <MetricBar value={perplexity} accent="gold" hideLabel />
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <PrivacyInfoModal open={privacyOpen} onOpenChange={setPrivacyOpen} />
+        <HumanizationInfoModal open={humanizationOpen} onOpenChange={setHumanizationOpen} />
+
+        <footer className="glass-panel rounded-[32px] border-white/10 px-5 py-4 text-sm text-white/80 shadow-[0_20px_60px_rgba(0,0,0,0.24)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <span className="flex h-3 w-3 rounded-full bg-cyan-400 shadow-[0_0_18px_rgba(0,240,255,0.45)]" />
+              <span className="uppercase tracking-[0.35em] text-white/80">SYSTÈME QUANTIQUE : {systemStatus}</span>
+            </div>
+            <div className="text-xs uppercase tracking-[0.35em] text-white/50">
+              Mode : {mode.toUpperCase()} • Analyse prête à exécuter
+            </div>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
 
-
-
-/* ------- Icons ------- */
-function UploadIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 15V3" />
-      <path d="m7 8 5-5 5 5" />
-      <path d="M5 21h14" />
-    </svg>
-  );
-}
-function BoltIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-    </svg>
-  );
-}
-function SparkIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6" />
-    </svg>
-  );
-}
-function ScanIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M3 12h18" />
-    </svg>
-  );
-}
