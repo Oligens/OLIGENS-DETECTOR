@@ -1,12 +1,15 @@
 import Dexie, { type Table } from "dexie";
 import type { SupportedLang } from "./languageDetect";
-import type { Register } from "./TextHumanizer";
+import type { Register, RegisterPreference } from "./TextHumanizer";
 
 export interface UserProfile {
   userId: string;
+  email?: string;
   fullName: string;
   role: string;
-  preferredRegister: Register;
+  avatarUrl?: string;
+  preferredRegister: RegisterPreference;
+  passwordHash?: string;
   createdAt: number;
 }
 

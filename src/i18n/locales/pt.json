@@ -1,0 +1,10 @@
+{
+  "downloadApp": "Baixar o app",
+  "login": "Entrar",
+  "signup": "Cadastrar",
+  "profile": "Perfil",
+  "history": "Histórico",
+  "pricing": "Preços",
+  "noActiveAccount": "Nenhuma conta ativa",
+  "connectedAs": "Conectado: {{email}}"
+}

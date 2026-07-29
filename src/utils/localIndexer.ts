@@ -61,7 +61,7 @@ export async function extractTextFromFile(file: File): Promise<string> {
   if (ext === "xlsx") {
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const XLSX = await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.mjs");
+      const XLSX = await import("xlsx");
       const workbook = XLSX.read(arrayBuffer, { type: "array" });
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];

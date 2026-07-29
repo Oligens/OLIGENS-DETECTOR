@@ -1,0 +1,10 @@
+{
+  "downloadApp": "Download the app",
+  "login": "Log in",
+  "signup": "Sign up",
+  "profile": "Profile",
+  "history": "History",
+  "pricing": "Pricing",
+  "noActiveAccount": "No active account",
+  "connectedAs": "Connected: {{email}}"
+}

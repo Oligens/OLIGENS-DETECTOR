@@ -1,0 +1,10 @@
+{
+  "downloadApp": "تحميل التطبيق",
+  "login": "تسجيل الدخول",
+  "signup": "إنشاء حساب",
+  "profile": "الملف الشخصي",
+  "history": "السجل",
+  "pricing": "الأسعار",
+  "noActiveAccount": "لا يوجد حساب نشط",
+  "connectedAs": "متصل: {{email}}"
+}

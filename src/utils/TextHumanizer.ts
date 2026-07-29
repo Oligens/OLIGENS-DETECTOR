@@ -6,6 +6,10 @@
 import { cosineSimilarity, detect, splitSentences } from "@/lib/detector";
 
 export type Register = "juridique" | "academique" | "professionnel" | "creatif";
+export type RegisterPreference = {
+  tone: Register;
+  preserveFacts: boolean;
+};
 
 // Terms whose meaning must be preserved verbatim per register.
 const PROTECTED_TERMS_BY_REGISTER: Record<Register, Set<string>> = {

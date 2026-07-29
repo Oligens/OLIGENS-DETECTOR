@@ -1,0 +1,24 @@
+key,en,fr,ht,es,de,it,pt,zh,ja,ar
+downloadApp,Download the app,Télécharger l'application,Telechaje aplikasyon an,Descargar la aplicación,App herunterladen,Scarica l'app,Baixar o app,下载应用,アプリをダウンロード,تحميل التطبيق
+login,Log in,Se connecter,Konekte,Iniciar sesión,Anmelden,Accedi,Entrar,登录,ログイン,تسجيل الدخول
+signup,Sign up,S'inscrire,Enskri,Registrarse,Registrieren,Iscriviti,Cadastrar,注册,サインアップ,إنشاء حساب
+profile,Profile,Profil,Pwofil,Perfil,Profilo,Profilo,Perfil,个人资料,プロファイル,الملف الشخصي
+history,History,Historique,Istwa,Historial,Verlauf,Cronologia,Histórico,历史,履歴,السجل
+pricing,Pricing,Pricing,Pri,Precios,Preisgestaltung,Prezzi,Preços,定价,価格,الأسعار
+noActiveAccount,No active account,Aucun compte actif,Pa gen kont aktif,Ninguna cuenta activa,Kein aktives Konto,Nessun account attivo,Nenhuma conta ativa,没有活动账户,アクティブなアカウントがありません,لا يوجد حساب نشط
+connectedAs,Connected: {{email}},Connecté : {{email}},Konekte: {{email}},Conectado: {{email}},Verbunden: {{email}},Connesso: {{email}},Conectado: {{email}},已连接: {{email}},接続済み: {{email}},متصل: {{email}}
+pwa_help,Use your browser 'Install app' menu to install.,Pour installer l'application, utilisez le menu 'Installer l'application' de votre navigateur.,Sèvi ak meni 'Enstale aplikasyon' navigatè w la.,Utilice el menú 'Instalar aplicación' de su navegador.,Verwenden Sie das Menü 'App installieren' Ihres Browsers.,Usa il menu 'Installa app' del tuo browser.,Use o menu 'Instalar app' do seu navegador.,使用浏览器的“安装应用程序”菜单进行安装。,ブラウザの「アプリをインストール」メニューを使用してください。,استخدم قائمة "تثبيت التطبيق" في متصفحك لتثبيت التطبيق.
+auth_google_not_configured,Google auth not configured,L'authentification Google n'est pas configurée,L'authentification Google n'est pas configurée,L'authentification Google n'est pas configurée,L'authentification Google n'est pas configurée,L'authentification Google n'est pas configurée,L'authentification Google n'est pas configurée,L'authentification Google n'est pas configurée,L'authentification Google n'est pas configurée,L'authentification Google n'est pas configurée
+profile_modal_title,Profile and secure access,Profil et accès sécurisé,Pwofil ak aksè sekirize,Perfil y acceso seguro,Profil und sicherer Zugriff,Profilo e accesso sicuro,Perfil e acesso seguro,个人资料和安全访问,プロファイルと安全なアクセス,الملف الشخصي والوصول الآمن
+email_label,Email address,Adresse email,Adrès imel,Dirección de correo electrónico,E-Mail-Adresse,Indirizzo e-mail,Endereço de e-mail,电子邮件地址,メールアドレス,عنوان البريد الإلكتروني
+password_label,Password,Mot de passe,Modpas,Contraseña,Passwort,Password,Senha,密码,パスワード,كلمة المرور
+fullname_label,Full name,Nom complet,Non konplè,Nombre completo,Vollständiger Name,Nome completo,Nome completo,全名,氏名,الاسم الكامل
+role_label,Role / Institution,Rôle / Institution,Ròl / Enstitisyon,Rol / Institución,Rolle / Institution,Ruolo / Istituzione,Papel / Instituição,角色/机构,役割/組織,الدور/المؤسسة
+login_button,Log in,Connexion,Konekte,Iniciar sesión,Anmelden,Accedi,Entrar,登录,ログイン,تسجيل الدخول
+signup_button,Create account,Créer un compte,Kreye kont,Crear cuenta,Registrieren,Iscriviti,Criar conta,注册,サインアップ,إنشاء حساب
+logout_button,Logout,Déconnexion,Dekonekte,Cerrar sesión,Abmelden,Disconnetti,Sair,登出,ログアウト,تسجيل الخروج
+google_continue,Continue with Google,Continuer avec Google,Kontinye avèk Google,Continuar con Google,Mit Google fortfahren,Continua con Google,Continuar com o Google,使用 Google 登录,Googleで続行,متابعة مع Google
+error_network,Network error,Erreur réseau,Erè rezo,Error de red,Netzwerkfehler,Errore di rete,Erro de rede,网络错误,ネットワークエラー,خطأ في الشبكة
+signup_success,Account created,Compte créé,Kont kreye,Cuenta creada,Konto erstellt,Account creato,Conta criada,账户已创建,アカウントが作成されました,تم إنشاء الحساب
+login_failed,Login failed,Échec de la connexion,Echèk koneksyon,Error de inicio de sesión,Anmeldung fehlgeschlagen,Accesso non riuscito,Falha no login,登录失败,ログインに失敗しました,فشل تسجيل الدخول
+csrf_error,CSRF validation failed,Échec de la validation CSRF,Validation CSRF echwe,Error de validación CSRF,CSRF-Validierung fehlgeschlagen,Validazione CSRF non riuscita,Falha na validação CSRF,CSRF 验证失败,CSRF 検証に失敗しました,فشل التحقق من CSRF

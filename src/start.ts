@@ -1,4 +1,5 @@
 import { createStart, createMiddleware } from "@tanstack/react-start";
+import { handleAuthApiRequest } from "./server/auth";
 
 import { renderErrorPage } from "./lib/error-page";
 
@@ -17,6 +18,19 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
   }
 });
 
+const authMiddleware = createMiddleware().server(async ({ request, next }) => {
+  try {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith("/api/auth")) {
+      return await handleAuthApiRequest(request);
+    }
+  } catch (err) {
+    console.error("authMiddleware error", err);
+    return new Response(null, { status: 500 });
+  }
+  return await next();
+});
+
 export const startInstance = createStart(() => ({
-  requestMiddleware: [errorMiddleware],
+  requestMiddleware: [authMiddleware, errorMiddleware],
 }));

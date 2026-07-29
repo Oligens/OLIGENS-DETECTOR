@@ -1,0 +1,10 @@
+{
+  "downloadApp": "下载应用",
+  "login": "登录",
+  "signup": "注册",
+  "profile": "个人资料",
+  "history": "历史",
+  "pricing": "定价",
+  "noActiveAccount": "没有活动账户",
+  "connectedAs": "已连接: {{email}}"
+}

@@ -1,9 +1,10 @@
 ﻿import { Link, createFileRoute } from "@tanstack/react-router";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 
 import { detect, splitSentences, type DetectionMetrics } from "@/lib/detector";
 import { TextHumanizer, type HumanizerRapport, type Register } from "@/utils/TextHumanizer";
 import { generateAuditReport } from "@/utils/pdfGenerator";
+import { analyzeFactDensity } from "@/utils/factDensityAnalyzer";
 import { extractTextFromFile, syncLocalDirectory } from "@/utils/localIndexer";
 import { ActionButton } from "@/components/ActionButton";
 import { SidebarButton } from "@/components/SidebarButton";
@@ -13,6 +14,10 @@ import { HeatmapText, type HeatmapSegment } from "@/components/HeatmapText";
 import { MetricBar } from "@/components/MetricBar";
 import { PrivacyInfoModal } from "@/components/PrivacyInfoModal";
 import { HumanizationInfoModal } from "@/components/HumanizationInfoModal";
+import ProfileModal from "@/components/ProfileModal";
+import { LanguageSelector } from '@/components/LanguageSelector';
+import { saveRecord } from "@/utils/historyStorage";
+import { db, type UserProfile } from "@/utils/dbStorage";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -50,6 +55,11 @@ const PLAGIARISM_SOURCES = [
   },
 ];
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
 function OligensDetectorPage() {
   const [text, setText] = useState("");
   const [mode, setMode] = useState("professionnel");
@@ -62,6 +72,16 @@ function OligensDetectorPage() {
   const [wordLimit] = useState(2000);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [humanizationOpen, setHumanizationOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileDefaultTab, setProfileDefaultTab] = useState<"login" | "signup">("login");
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isPwaInstallable, setIsPwaInstallable] = useState(false);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const [showPwaHelp, setShowPwaHelp] = useState(false);
+  const [pwaHelpMessage, setPwaHelpMessage] = useState(
+    "Pour installer l'application sur votre bureau, utilisez le menu 'Installer l'application' de votre navigateur.",
+  );
   const [localFolderName, setLocalFolderName] = useState<string | null>(null);
   const [localSyncMessage, setLocalSyncMessage] = useState("Aucun dossier local indexé.");
   const [connectedFolder, setConnectedFolder] = useState<string | null>(null);
@@ -96,6 +116,110 @@ function OligensDetectorPage() {
     });
   }, [text]);
 
+  const loadUserProfile = async () => {
+    try {
+      if (typeof window !== "undefined") {
+        const res = await fetch('/api/auth/user', { method: 'GET', credentials: 'same-origin' });
+        if (res.status === 401) {
+          setUserProfile(null);
+          return;
+        }
+        if (res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          const user = payload?.user;
+          if (user) {
+            setUserProfile({
+              userId: user.id,
+              email: user.email,
+              fullName: user.fullName,
+              role: user.roleInstitution || user.role || "",
+              avatarUrl: user.avatarUrl,
+              preferredRegister: { tone: "professionnel", preserveFacts: true } as any,
+              passwordHash: "",
+              createdAt: user.createdAt || Date.now(),
+            });
+            return;
+          }
+          // explicit null user from server: treat as not authenticated
+          if (payload && payload.user == null) {
+            setUserProfile(null);
+            return;
+          }
+        }
+      }
+
+      const storedSession = typeof window !== "undefined" ? window.localStorage.getItem("oligens_current_user") : null;
+      if (storedSession) {
+        setUserProfile(JSON.parse(storedSession));
+        return;
+      }
+
+      const users = await db.users.toArray();
+      if (users.length > 0) {
+        setUserProfile(users[0]);
+      }
+    } catch (error) {
+      console.warn("Impossible de charger le profil utilisateur", error);
+    }
+  };
+
+  useEffect(() => {
+    loadUserProfile();
+
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredPrompt(event as BeforeInstallPromptEvent);
+      setIsPwaInstallable(true);
+    };
+
+    const onAppInstalled = () => setIsAppInstalled(true);
+
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("appinstalled", onAppInstalled);
+
+    if (window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone) {
+      setIsAppInstalled(true);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (isAppInstalled) {
+      setPwaHelpMessage("L'application est déjà installée.");
+      setShowPwaHelp(true);
+      return;
+    }
+
+    if (!deferredPrompt) {
+      setPwaHelpMessage(
+        "Pour installer l'application sur votre bureau, utilisez le menu 'Installer l'application' de votre navigateur.",
+      );
+      setShowPwaHelp(true);
+      return;
+    }
+
+    try {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === "accepted") {
+        setIsAppInstalled(true);
+      }
+    } catch (error) {
+      console.warn("Erreur lors de la demande d'installation PWA", error);
+      setPwaHelpMessage(
+        "L'installation native a échoué. Utilisez le menu 'Installer l'application' de votre navigateur.",
+      );
+      setShowPwaHelp(true);
+    } finally {
+      setDeferredPrompt(null);
+      setIsPwaInstallable(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!text.trim()) return;
     setIsAnalyzing(true);
@@ -104,6 +228,21 @@ function OligensDetectorPage() {
     setAnalysisResult(result);
     setHumanizeReport(null);
     setActiveTab("heatmap");
+    const factDensity = analyzeFactDensity(text).factDensityIndex;
+
+    await saveRecord({
+      documentTitle: "Analyse de texte",
+      originalText: text,
+      language: "fr",
+      type: "DETECTION",
+      initialScore: result.aiScore,
+      finalScore: result.aiScore,
+      llmSignature: result.llmSignature,
+      factDensityScore: factDensity,
+      plagiarismScore: result.ngramDensity,
+      metricsBreakdown: result,
+    });
+
     setIsAnalyzing(false);
   };
 
@@ -111,12 +250,32 @@ function OligensDetectorPage() {
     if (!text.trim()) return;
     setIsHumanizing(true);
     await new Promise((resolve) => setTimeout(resolve, 150));
+    const initialResult = detect(text);
     const { texteFinal, rapport } = humanizer.humanize(text, {
       register: mode as Register,
     });
+    const finalResult = detect(texteFinal);
+    const factDensity = analyzeFactDensity(text).factDensityIndex;
     setText(texteFinal);
     setHumanizeReport(rapport);
-    setAnalysisResult(detect(texteFinal));
+    setAnalysisResult(finalResult);
+
+    await saveRecord({
+      documentTitle: "Humanisation de texte",
+      originalText: text,
+      processedText: texteFinal,
+      humanizedText: texteFinal,
+      language: "fr",
+      type: "HUMANIZATION",
+      initialScore: initialResult.aiScore,
+      finalScore: finalResult.aiScore,
+      semanticPreservationScore: rapport.semanticIntegrityScore,
+      llmSignature: finalResult.llmSignature,
+      factDensityScore: factDensity,
+      plagiarismScore: finalResult.ngramDensity,
+      metricsBreakdown: finalResult,
+    });
+
     setIsHumanizing(false);
     setActiveTab("editor");
   };
@@ -183,18 +342,60 @@ function OligensDetectorPage() {
               </div>
               <div className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.45em] text-white/60">
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">PLAN GRATUIT</span>
-                <span>Luxury Quantum Sci-Fi</span>
+                <span> </span>
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-3">
-            <Link
-              to="/profile"
-              className="oligens-btn-ghost rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/80 transition hover:border-[color:var(--oligens-gold)]/60 hover:text-[color:var(--oligens-gold)]"
+            <button
+              type="button"
+              onClick={handleInstallApp}
+              className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs uppercase tracking-[0.35em] text-cyan-100 transition hover:bg-cyan-400/20"
             >
-              Profil
-            </Link>
+              ⬇️ Télécharger l&apos;app
+            </button>
+            <LanguageSelector />
+
+            {userProfile ? (
+              <button
+                type="button"
+                onClick={() => setProfileOpen(true)}
+                className="oligens-btn-ghost flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/80 transition hover:border-cyan-400/60 hover:text-cyan-300"
+              >
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-cyan-400/10 text-cyan-100 ring-1 ring-cyan-400/20">
+                  {userProfile.fullName?.[0] ?? userProfile.email?.[0] ?? "U"}
+                </span>
+                <span className="hidden sm:inline-block text-[10px] uppercase tracking-[0.35em] text-white/80">
+                  Profil
+                </span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileDefaultTab("login");
+                    setProfileOpen(true);
+                    loadUserProfile();
+                  }}
+                  className="rounded-full px-4 py-2 text-xs uppercase tracking-[0.35em] text-white bg-cyan-500 hover:bg-cyan-600 transition"
+                >
+                  Se connecter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileDefaultTab("signup");
+                    setProfileOpen(true);
+                    loadUserProfile();
+                  }}
+                  className="rounded-full border border-white/10 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/80 bg-white/5 hover:bg-white/10 transition"
+                >
+                  S&apos;inscrire
+                </button>
+              </>
+            )}
             <Link
               to="/history"
               className="oligens-btn-ghost rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/80 transition hover:border-cyan-400/60 hover:text-cyan-300"
@@ -210,7 +411,20 @@ function OligensDetectorPage() {
           </div>
         </header>
 
+        {showPwaHelp ? (
+          <div className="glass-panel rounded-[32px] border border-cyan-400/10 bg-[#02040A]/95 px-5 py-4 text-sm text-cyan-100 shadow-[0_15px_50px_rgba(0,0,0,0.35)]">
+            {pwaHelpMessage}
+            <button
+              type="button"
+              onClick={() => setShowPwaHelp(false)}
+              className="ml-4 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.35em] text-white/80 hover:bg-white/10"
+            >
+              Fermer
+            </button>
+          </div>
+        ) : null}
         <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_380px]">
+
           <aside className="glass-panel rounded-[32px] border-white/10 p-5 text-white/90 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
             <div className="mb-6">
               <div className="font-mono text-[10px] uppercase tracking-[0.35em] text-[color:var(--oligens-gold)]">
@@ -270,7 +484,7 @@ function OligensDetectorPage() {
                   QUANTUM TERMINAL
                 </div>
                 <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                  Analyse de texte sophistiquée
+                  Analyse de texte
                 </h1>
               </div>
               <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/70 shadow-[0_0_20px_rgba(0,0,0,0.15)]">
@@ -483,6 +697,12 @@ function OligensDetectorPage() {
 
         <PrivacyInfoModal open={privacyOpen} onOpenChange={setPrivacyOpen} />
         <HumanizationInfoModal open={humanizationOpen} onOpenChange={setHumanizationOpen} />
+<ProfileModal
+            open={profileOpen}
+            onClose={() => setProfileOpen(false)}
+            onUserUpdated={(user) => setUserProfile(user)}
+            initialTab={profileDefaultTab}
+          />
 
         <footer className="glass-panel rounded-[32px] border-white/10 px-5 py-4 text-sm text-white/80 shadow-[0_20px_60px_rgba(0,0,0,0.24)]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

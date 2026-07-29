@@ -1,4 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import '../i18n';
+import i18n from 'i18next';
 import {
   Outlet,
   Link,
@@ -120,8 +122,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  // set initial html lang/dir based on i18n
+  const lang = i18n.language || 'fr';
+  const dir = i18n.dir ? i18n.dir(lang) : 'ltr';
   return (
-    <html lang="en">
+    <html lang={lang} dir={dir}>
       <head>
         <HeadContent />
       </head>
@@ -135,6 +140,51 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  // Print the developer signature in console (for audit) — obfuscated lightly
+  useEffect(() => {
+    try {
+      const sig = `\/***************************************************\\\n/*                                                     */\n/* JJJJJJJ    OOOOOOO    CCCCCC                   */\n/* J      O       O  C      C                  */\n/* J      O       O  C                         */\n/* J      O       O  C                         */\n/* J  J      O       O  C      C                  */\n/* JJ        OOOOOOO    CCCCCC                   */\n/*                                                     */\n/* OLIGENS . C.J            */\n\/***************************************************/`;
+      console.log('\n%c' + sig, 'color:#0ff;font-weight:bold');
+    } catch {}
+  }, []);
+
+  // Geo-IP language detection (only if user did not set a preference)
+  useEffect(() => {
+    try {
+      const pref = typeof window !== 'undefined' ? localStorage.getItem('oligens_lang') : null;
+      if (pref) return;
+
+      fetch('https://ipapi.co/json/')
+        .then((r) => r.json())
+        .then((data: any) => {
+          const cc = (data.country_code || '').toString().toUpperCase();
+          const region = (data.region_code || data.region || '').toString().toUpperCase();
+          let lang = '';
+          if (cc === 'HT') lang = 'ht';
+          else if (cc === 'CA' && region === 'QC') lang = 'fr';
+          else if (['US', 'GB', 'AU'].includes(cc)) lang = 'en';
+          else if (cc === 'FR') lang = 'fr';
+          else if (cc === 'CN') lang = 'zh';
+          else if (cc === 'JP') lang = 'ja';
+          if (lang) {
+            i18n.changeLanguage(lang);
+            try {
+              document.documentElement.lang = lang;
+              document.documentElement.dir = i18n.dir(lang);
+            } catch {}
+          } else {
+            const nav = (navigator.language || navigator.userLanguage || 'fr').split('-')[0];
+            i18n.changeLanguage(nav);
+          }
+        })
+        .catch(() => {
+          const nav = (navigator.language || navigator.userLanguage || 'fr').split('-')[0];
+          i18n.changeLanguage(nav);
+        });
+    } catch (err) {
+      // ignore
+    }
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

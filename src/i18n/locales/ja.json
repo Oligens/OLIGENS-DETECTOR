@@ -1,0 +1,10 @@
+{
+  "downloadApp": "アプリをダウンロード",
+  "login": "ログイン",
+  "signup": "サインアップ",
+  "profile": "プロファイル",
+  "history": "履歴",
+  "pricing": "価格",
+  "noActiveAccount": "アクティブなアカウントがありません",
+  "connectedAs": "接続済み: {{email}}"
+}
